@@ -1,0 +1,6 @@
+*
+.*.yml
+.gitignore
+!**.c
+!**.h
+
