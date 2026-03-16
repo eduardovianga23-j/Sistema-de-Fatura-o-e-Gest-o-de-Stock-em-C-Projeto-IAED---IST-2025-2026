@@ -5,6 +5,7 @@
 #include <string.h>
 #include <ctype.h>
 
+/* --- Consts --- */
 #define MAX_PRODUCTS 10000
 #define MAX_LINE 65536
 
