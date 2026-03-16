@@ -8,7 +8,7 @@
 /* --- Consts --- */
 #define MAX_PRODUCTS 10000
 #define MAX_LINE 65536
-
+ 
 /* --- Estruturas de Dados --- */
 
 typedef struct Product {
