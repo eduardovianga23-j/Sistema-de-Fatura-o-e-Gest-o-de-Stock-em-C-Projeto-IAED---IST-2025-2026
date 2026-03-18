@@ -1,3 +1,17 @@
+/**
+ * @file proj.c
+ * @brief 
+ * Sistema de facturação em C que gere produtos, cesto e facturas.
+ * Permite criar/atualizar produtos com EAN válido, preço, IVA e stock.
+ * Valida códigos EAN e aplica classes de IVA (ficheiro externo ou valores default).
+ * Suporta um cesto de compras com adição/remoção de produtos e controlo de stock.
+ * Emite facturas com NIF, nome e total com IVA e arredondamento aos cêntimos.
+ * Permite listar e remover produtos e facturas, mantendo consistência dos dados.
+ * Funciona por comandos via input, usando memória dinâmica sem variáveis globais.
+ * @author Eduardo João Vianga,IST 1111179
+ * @date March 18, 2025
+ */
+
 /* iaed26 - ist1119719 - project */
 
 #include <stdio.h>
@@ -5,7 +19,6 @@
 #include <string.h>
 #include <ctype.h>
 
-/* --- Consts --- */
 #define MAX_PRODUCTS 10000
 #define MAX_LINE 65536
  
@@ -80,8 +93,6 @@ void read_name_or_token(char *buffer) {
 }
 
 /* --- Validações e Cálculos --- */
-#include <ctype.h>
-#include <string.h>
 
 int is_ean_valid(const char *e) {
     int len = (int)strlen(e);
@@ -124,77 +135,76 @@ int match_wild(const char *p, const char *s) {
 void cmd_p(Sistema *s) {
     char ean[MAX_LINE], iva_c, desc[MAX_LINE];
     double pr;
-    int qty, c, i = 0;
+    int qty;
+    Product *p;
 
-    /* Leitura dos campos iniciais: ean, iva, preço e quantidade */
+    /* 1. Leitura dos campos numéricos e EAN */
+    /* O espaço antes de %c ajuda a ignorar brancos pendentes */
     if (scanf("%s %c %lf %d", ean, &iva_c, &pr, &qty) != 4) return;
 
-    /* Ignorar espaços até ao início da descrição */
-    while (isspace(c = getchar()) && c != '\n');
-
-    /* Leitura da descrição até final da linha */
-    while (c != '\n' && c != EOF) {
-        if (i < MAX_LINE - 1) desc[i++] = (char)c;
-        c = getchar();
+    /* 2. Leitura da descrição (o resto da linha) */
+    /* " %[^\n]" ignora o espaço após a quantidade e lê até ao fim da linha */
+    if (scanf(" %[^\n]", desc) != 1) {
+        desc[0] = '\0';
     }
-    desc[i] = '\0';
 
     /* --- Validações --- */
 
-    /* EAN */
     if (!is_ean_valid(ean)) {
         printf("invalid ean\n");
         return;
     }
 
-    /* IVA */
-    if (iva_c < 'A' || iva_c > 'Z' || s->taxas[iva_c-'A'] == -1) {
+    if (iva_c < 'A' || iva_c > 'Z' || s->taxas[iva_c - 'A'] == -1) {
         printf("invalid iva\n");
         return;
     }
 
-    /* Preço */
     if (pr <= 0) {
         printf("invalid price\n");
         return;
     }
 
-    /* Quantidade */
     if (qty < 0) {
         printf("invalid quantity\n");
         return;
     }
 
-    /* Descrição: máximo 50 bytes e começa com letra maiúscula */
-    if ((int)strlen(desc) > 50 || !isupper((unsigned char)desc[0])) {
+    /* Descrição: máx 50 caracteres e deve começar por letra maiúscula */
+    if (strlen(desc) > 50 || !isupper((unsigned char)desc[0])) {
         printf("invalid description\n");
         return;
     }
 
-    /* Produto em uso: só impede alteração do preço se houver quantidade > 0 no cesto */
-    for (BasketItem *b = s->head_b; b; b = b->next)
-        if (!strcmp(b->ean, ean) && b->quantity > 0) {
-            Product *p = s->head_p;
-            while (p && strcmp(p->ean, ean)) p = p->next;
-            if (p && ((long)(pr*100 + 0.5) != p->price)) {
+    /* 3. Verificação de Preço: Produto em uso no cesto */
+    long novo_preco_cents = (long)(pr * 100 + 0.5);
+    
+    for (BasketItem *b = s->head_b; b; b = b->next) {
+        if (strcmp(b->ean, ean) == 0 && b->quantity > 0) {
+            /* Procurar o produto atual para comparar o preço */
+            p = s->head_p;
+            while (p && strcmp(p->ean, ean) != 0) p = p->next;
+            
+            if (p && novo_preco_cents != p->price) {
                 printf("product in use\n");
                 return;
             }
         }
+    }
 
-    /* Procurar produto existente */
-    Product *p = s->head_p;
-    while (p && strcmp(p->ean, ean)) p = p->next;
+    /* 4. Procurar produto no sistema */
+    p = s->head_p;
+    while (p && strcmp(p->ean, ean) != 0) p = p->next;
 
     if (p) {
-        /* Produto existente: atualizar stock e campos permitidos */
+        /* Produto existe: atualizar stock e campos permitidos */
         p->stock += qty;
-        p->price = (long)(pr * 100 + 0.5);
+        p->price = novo_preco_cents;
         p->iva_code = iva_c;
         free(p->description);
         p->description = sstrdup(desc);
     } else {
-        /* Novo produto */
+        /* Novo produto: verificar limite */
         if (s->num_p >= MAX_PRODUCTS) {
             printf("invalid product\n");
             return;
@@ -203,19 +213,22 @@ void cmd_p(Sistema *s) {
         p = smalloc(sizeof(Product));
         strcpy(p->ean, ean);
         p->description = sstrdup(desc);
-        p->price = (long)(pr * 100 + 0.5);
+        p->price = novo_preco_cents;
         p->iva_code = iva_c;
         p->stock = qty;
         p->sold_qty = 0;
         p->next = NULL;
 
-        if (!s->head_p) s->head_p = p;
-        else s->tail_p->next = p;
+        if (!s->head_p) {
+            s->head_p = p;
+        } else {
+            s->tail_p->next = p;
+        }
         s->tail_p = p;
         s->num_p++;
     }
 
-    /* Output final: stock resultante */
+    /* 5. Output do stock final */
     printf("%d\n", p->stock);
 }
 
@@ -228,12 +241,21 @@ void cmd_l(Sistema *s) {
         /* l sem argumentos: lista todos com stock > 0. */
         for (Product *p = s->head_p; p; p = p->next) {
             if (p->stock > 0) {
+                // --- INÍCIO DA LÓGICA DA SOMA ---
+                int qty_no_cesto = 0;
+                for (BasketItem *b = s->head_b; b; b = b->next) {
+                    if (strcmp(b->ean, p->ean) == 0) {
+                        qty_no_cesto = b->quantity;
+                        break;
+                    }
+                }
+                // Imprimimos p->sold_qty + qty_no_cesto
                 printf("%s %c %.2f %d %d %s\n", p->ean, p->iva_code, 
-                       p->price/100.0, p->sold_qty, p->stock, p->description);
+                       p->price/100.0, p->sold_qty + qty_no_cesto, p->stock, p->description);
+                // --- FIM DA LÓGICA DA SOMA ---
                 found_any = 1;
             }
         }
-        /* Se não houver produtos com stock > 0 no sistema, imprime erro */
         if (!found_any) {
             printf("*: no such product\n");
         }
@@ -244,8 +266,18 @@ void cmd_l(Sistema *s) {
             found_any = 0;
             for (Product *p = s->head_p; p; p = p->next) {
                 if (match_wild(tok, p->ean) && p->stock > 0) {
+                    // --- INÍCIO DA LÓGICA DA SOMA ---
+                    int qty_no_cesto = 0;
+                    for (BasketItem *b = s->head_b; b; b = b->next) {
+                        if (strcmp(b->ean, p->ean) == 0) {
+                            qty_no_cesto = b->quantity;
+                            break;
+                        }
+                    }
+                    // Imprimimos a soma aqui também
                     printf("%s %c %.2f %d %d %s\n", p->ean, p->iva_code, 
-                           p->price/100.0, p->sold_qty, p->stock, p->description);
+                           p->price/100.0, p->sold_qty + qty_no_cesto, p->stock, p->description);
+                    // --- FIM DA LÓGICA DA SOMA ---
                     found_any = 1;
                 }
             }
@@ -353,38 +385,84 @@ void cmd_a(Sistema *s) {
 
 void cmd_f(Sistema *s) {
     char line[MAX_LINE], nome[MAX_LINE] = "Cliente final";
-    long nif = 999999999, total = 0; int items = 0, c;
+    long nif = 999999999, total = 0;
+    int items = 0, c;
+
+    // Ignorar espaços iniciais
     while (isspace(c = getchar()) && c != '\n');
+
     if (c != '\n' && c != EOF) {
-        ungetc(c, stdin); read_name_or_token(line);
-        if (isdigit(line[0]) && strlen(line) == 9) {
-            nif = atol(line); read_name_or_token(nome);
-        } else strcpy(nome, line);
+        ungetc(c, stdin);
+        read_name_or_token(line);
+
+        // Validação robusta do NIF: deve ter 9 dígitos
+        int valid_nif = 1;
+        if (strlen(line) == 9) {
+            for (int i = 0; i < 9; i++)
+                if (!isdigit(line[i])) valid_nif = 0;
+
+            if (valid_nif) {
+                nif = atol(line);       // Converte para long
+                read_name_or_token(nome); // Lê nome do cliente
+            } else {
+                strcpy(nome, line);     // Não é NIF, é nome
+            }
+        } else {
+            strcpy(nome, line);         // Não tem 9 caracteres, é nome
+        }
     }
+
+    // Se nome for "error", limpar cesto e sair
     if (!strcmp(nome, "error")) {
         while (s->head_b) {
-            BasketItem *t = s->head_b; Product *p = s->head_p;
+            BasketItem *t = s->head_b;
+            Product *p = s->head_p;
             while (p && strcmp(p->ean, t->ean)) p = p->next;
             if (p) p->stock += t->quantity;
-            s->head_b = t->next; free(t);
-        } return;
+            s->head_b = t->next;
+            free(t);
+        }
+        return;
     }
+
+    // Calcular total e atualizar stock vendido
     for (BasketItem *b = s->head_b; b; b = b->next) {
-        Product *p = s->head_p; while (p && strcmp(p->ean, b->ean)) p = p->next;
+        Product *p = s->head_p;
+        while (p && strcmp(p->ean, b->ean)) p = p->next;
         if (p && b->quantity > 0) {
-            p->sold_qty += b->quantity; items += b->quantity;
+            p->sold_qty += b->quantity;
+            items += b->quantity;
             total += calc_total_iva(p->price, b->quantity, s->taxas[p->iva_code-'A']);
         }
     }
-    Invoice *nv = smalloc(sizeof(Invoice)), *curr = s->head_i, *prev = NULL;
-    nv->id = s->next_inv_id++; nv->nif = nif; nv->name = sstrdup(nome);
-    nv->items_count = items; nv->total_cents = total;
-    while (curr && (strcmp(curr->name, nome) < 0 || (strcmp(curr->name, nome) == 0 && curr->id < nv->id))) {
-        prev = curr; curr = curr->next;
+
+    // Criar nova fatura
+    Invoice *nv = smalloc(sizeof(Invoice));
+    Invoice *curr = s->head_i, *prev = NULL;
+    nv->id = s->next_inv_id++;
+    nv->nif = nif;
+    nv->name = sstrdup(nome);
+    nv->items_count = items;
+    nv->total_cents = total;
+
+    // Inserir fatura ordenadamente
+    while (curr && (strcmp(curr->name, nome) < 0 || 
+           (strcmp(curr->name, nome) == 0 && curr->id < nv->id))) {
+        prev = curr;
+        curr = curr->next;
     }
-    nv->next = curr; if (!prev) s->head_i = nv; else prev->next = nv;
-    printf("%d %.2f %d\n", items, total/100.0, nv->id);
-    while (s->head_b) { BasketItem *t = s->head_b; s->head_b = t->next; free(t); }
+    nv->next = curr;
+    if (!prev) s->head_i = nv;
+    else prev->next = nv;
+
+    printf("%d %.2f %d\n", items, total / 100.0, nv->id);
+
+    // Limpar cesto
+    while (s->head_b) {
+        BasketItem *t = s->head_b;
+        s->head_b = t->next;
+        free(t);
+    }
 }
 
 void cmd_d(Sistema *s) {
@@ -416,19 +494,52 @@ void cmd_d(Sistema *s) {
 }
 
 void cmd_r(Sistema *s) {
-    char ean[MAX_LINE]; int c;
+    char ean[MAX_LINE]; 
+    int c;
+
+    // Pula espaços iniciais
     while (isspace(c = getchar()) && c != '\n');
+
     if (c == '\n' || c == EOF) {
+        /* Caso r sem argumentos: Relatório Geral */
         long it = 0, fcs = 0, tot = 0;
-        for (Invoice *i = s->head_i; i; i = i->next) { it += i->items_count; fcs++; tot += i->total_cents; }
+        for (Invoice *i = s->head_i; i; i = i->next) { 
+            it += i->items_count; 
+            fcs++; 
+            tot += i->total_cents; 
+        }
         printf("%ld %ld %.2f\n", it, fcs, tot/100.0);
-        for (int j=0; j<26; j++) if (s->taxas[j] != -1) printf("%c %d%%\n", 'A'+j, s->taxas[j]);
+        for (int j = 0; j < 26; j++) {
+            if (s->taxas[j] != -1) 
+                printf("%c %d%%\n", 'A' + j, s->taxas[j]);
+        }
     } else {
-        ungetc(c, stdin); scanf("%s", ean);
-        if (!is_ean_valid(ean)) { printf("invalid ean\n"); return; }
-        Product *p = s->head_p; while (p && strcmp(p->ean, ean)) p = p->next;
-        if (!p) { printf("%s: no such product\n", ean); return; }
-        printf("%d %d %s\n", p->stock, p->sold_qty, p->description);
+        /* Caso r com EAN: Relatório de Produto Específico */
+        ungetc(c, stdin);
+        if (scanf("%s", ean) != 1) return;
+
+        if (!is_ean_valid(ean)) { 
+            printf("invalid ean\n"); 
+            return; 
+        }
+
+        Product *p = s->head_p; 
+        while (p && strcmp(p->ean, ean)) p = p->next;
+
+        if (!p) { 
+            printf("%s: no such product\n", ean); 
+            return; 
+        }
+
+        // --- LÓGICA DE VENDAS (Faturado + No Cesto) ---
+        int total_vendas = p->sold_qty;
+        for (BasketItem *b = s->head_b; b; b = b->next) {
+            if (strcmp(b->ean, p->ean) == 0) {
+                total_vendas += b->quantity;
+            }
+        }
+        
+        printf("%d %d %s\n", p->stock, total_vendas, p->description);
     }
 }
 
