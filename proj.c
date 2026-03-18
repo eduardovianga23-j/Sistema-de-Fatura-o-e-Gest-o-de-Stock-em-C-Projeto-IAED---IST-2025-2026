@@ -1,13 +1,12 @@
 /**
  * @file proj.c
  * @brief 
- * Billing system in C for managing products, carts, and invoices.
- * Create/update products with valid EAN, price, VAT, and stock levels.
- * Validates EAN codes and applies VAT rates (external file or fallback values). 
- * Supports a shopping cart with item addition/removal and stock control.
- * Issues invoices with TIN, name, total including VAT, and cent rounding.
- * List and remove products or invoices while maintaining data integrity.
- * Command-based input system using dynamic memory without global variables.
+ * Billing system in C for managing products, cart, and invoices.
+ * Supports products with EAN-8/EAN-13 validation, price, VAT, and stock.
+ * Uses VAT rates from file or default values.
+ * Handles cart operations with stock control and consistency.
+ * Generates invoices with NIF, client name, total with VAT, and rounding.
+ * Provides command-based input with dynamic memory and no global variables.
  * @author Eduardo João Vianga,IST 1111179
  * @date March 18, 2025
  */
@@ -144,8 +143,8 @@ void cmd_p(Sistema *s) {
 
     /* 2. Leitura da descrição (o resto da linha) */
     /* " %[^\n]" ignora o espaço após a quantidade e lê até ao fim da linha */
-    if (scanf(" %99[^\n]", desc) != 1) { 
-     desc[0] = '\0';
+    if (scanf(" %[^\n]", desc) != 1) {
+        desc[0] = '\0';
     }
 
     /* --- Validações --- */
