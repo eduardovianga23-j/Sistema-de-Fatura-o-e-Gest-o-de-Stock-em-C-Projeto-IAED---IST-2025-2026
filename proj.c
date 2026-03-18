@@ -1,13 +1,13 @@
 /**
  * @file proj.c
  * @brief 
- * Sistema de facturação em C que gere produtos, cesto e facturas.
- * Permite criar/atualizar produtos com EAN válido, preço, IVA e stock.
- * Verifica codigos EAN e aplica taxas de IVA (ficheiro externo ou valores por omissao). 
- * Suporta um cesto de compras com adição/remoção de produtos e controlo de stock.
- * Emite facturas com NIF, nome e total com IVA e arredondamento aos cêntimos.
- * Permite listar e remover produtos e facturas, mantendo consistência dos dados.
- * Funciona por comandos via input, usando memória dinâmica sem variáveis globais.
+ * Billing system in C for managing products, carts, and invoices.
+ * Create/update products with valid EAN, price, VAT, and stock levels.
+ * Validates EAN codes and applies VAT rates (external file or fallback values). 
+ * Supports a shopping cart with item addition/removal and stock control.
+ * Issues invoices with TIN, name, total including VAT, and cent rounding.
+ * List and remove products or invoices while maintaining data integrity.
+ * Command-based input system using dynamic memory without global variables.
  * @author Eduardo João Vianga,IST 1111179
  * @date March 18, 2025
  */
