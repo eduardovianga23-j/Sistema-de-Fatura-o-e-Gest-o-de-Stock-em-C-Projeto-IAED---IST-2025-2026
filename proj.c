@@ -144,8 +144,8 @@ void cmd_p(Sistema *s) {
 
     /* 2. Leitura da descrição (o resto da linha) */
     /* " %[^\n]" ignora o espaço após a quantidade e lê até ao fim da linha */
-    if (scanf(" %[^\n]", desc) != 1) {
-        desc[0] = '\0';
+    if (scanf(" %99[^\n]", desc) != 1) { 
+     desc[0] = '\0';
     }
 
     /* --- Validações --- */
