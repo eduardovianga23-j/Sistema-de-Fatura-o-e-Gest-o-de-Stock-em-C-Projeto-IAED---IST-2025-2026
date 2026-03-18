@@ -3,7 +3,7 @@
  * @brief 
  * Sistema de facturação em C que gere produtos, cesto e facturas.
  * Permite criar/atualizar produtos com EAN válido, preço, IVA e stock.
- * Valida códigos EAN e aplica classes de IVA (ficheiro externo ou valores default).
+ * Verifica codigos EAN e aplica taxas de IVA (ficheiro externo ou valores por omissao). 
  * Suporta um cesto de compras com adição/remoção de produtos e controlo de stock.
  * Emite facturas com NIF, nome e total com IVA e arredondamento aos cêntimos.
  * Permite listar e remover produtos e facturas, mantendo consistência dos dados.
