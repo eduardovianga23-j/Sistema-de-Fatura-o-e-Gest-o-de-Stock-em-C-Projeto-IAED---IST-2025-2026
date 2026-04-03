@@ -214,22 +214,24 @@ void cmd_a(Sistema *s) {
 
     while (isspace(c = getchar()) && c != '\n');
 
+    /* ================= LISTAR CESTO ================= */
     if (c == '\n' || c == EOF) {
         for (BasketItem *b = s->head_b; b; b = b->next) {
             Product *p = find_product(s, b->ean);
-            if (p) {
+            if (p && b->quantity > 0) {
                 printf("%c %.2f %d %.2f %s\n",
                     p->iva_code,
                     p->price / 100.0,
                     b->quantity,
                     calc_total_iva(p->price, b->quantity,
-                        s->taxas[p->iva_code-'A']) / 100.0,
+                        s->taxas[p->iva_code - 'A']) / 100.0,
                     p->description);
             }
         }
         return;
     }
 
+    /* ================= INPUT ================= */
     ungetc(c, stdin);
     scanf("%s", buf);
 
@@ -237,6 +239,20 @@ void cmd_a(Sistema *s) {
         strcpy(ean, buf);
         qty = 1;
     } else {
+        /* validar inteiro */
+        int is_number = 1;
+        for (int i = 0; buf[i]; i++) {
+            if (!isdigit(buf[i]) && !(i == 0 && buf[i] == '-')) {
+                is_number = 0;
+                break;
+            }
+        }
+
+        if (!is_number) {
+            printf("invalid ean\n");
+            return;
+        }
+
         qty = atoi(buf);
         scanf("%s", ean);
     }
@@ -254,6 +270,7 @@ void cmd_a(Sistema *s) {
 
     BasketItem *b = find_basket_item(s, ean);
 
+    /* ================= ADICIONAR ================= */
     if (qty > 0) {
         if (p->stock < qty) {
             printf("no stock\n");
@@ -263,8 +280,9 @@ void cmd_a(Sistema *s) {
         p->stock -= qty;
         p->in_basket += qty;
 
-        if (b) b->quantity += qty;
-        else {
+        if (b) {
+            b->quantity += qty;
+        } else {
             b = smalloc(sizeof(BasketItem));
             strcpy(b->ean, ean);
             b->quantity = qty;
@@ -272,30 +290,44 @@ void cmd_a(Sistema *s) {
             s->head_b = b;
         }
     }
+
+    /* ================= REMOVER ================= */
     else if (qty < 0) {
         if (!b || b->quantity < -qty) {
             printf("invalid quantity\n");
             return;
         }
 
-        b->quantity += qty;
-        p->stock -= qty;
+        b->quantity += qty;      /* qty negativo */
+        p->stock -= qty;         /* devolve stock */
         p->in_basket += qty;
 
+        /* 🔥 REMOÇÃO CORRETA DA LISTA */
         if (b->quantity == 0) {
-            s->head_b = b->next;
-            free(b);
+            BasketItem *prev = NULL, *cur = s->head_b;
+
+            while (cur && cur != b) {
+                prev = cur;
+                cur = cur->next;
+            }
+
+            if (!prev) s->head_b = cur->next;
+            else prev->next = cur->next;
+
+            free(cur);
+            b = NULL;   /* 🔥 evita use-after-free */
         }
     }
 
-    int total = b ? b->quantity : 0;
+    /* ================= OUTPUT ================= */
+    int total = (b) ? b->quantity : 0;
 
     printf("%c %.2f %d %.2f %s\n",
         p->iva_code,
         p->price / 100.0,
         total,
         calc_total_iva(p->price, total,
-            s->taxas[p->iva_code-'A']) / 100.0,
+            s->taxas[p->iva_code - 'A']) / 100.0,
         p->description);
 }
 
