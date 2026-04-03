@@ -563,14 +563,16 @@ void cmd_r(Sistema *s) {
     /* 🔹 SEM ARGUMENTOS */
     if (c == '\n' || c == EOF) {
         long total_items = 0;
-        long total_facturas = 0;
         long total_valor = 0;
 
+        /* ✅ soma apenas faturas existentes */
         for (Invoice *i = s->head_i; i; i = i->next) {
             total_items += i->items_count;
-            total_facturas++;
             total_valor += i->total_cents;
         }
+
+        /* ✅ número TOTAL de faturas (mesmo apagadas) */
+        long total_facturas = s->next_inv_id - 1;
 
         printf("%ld %ld %.2f\n",
             total_items,
