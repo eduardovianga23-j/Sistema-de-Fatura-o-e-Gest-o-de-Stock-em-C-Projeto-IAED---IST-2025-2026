@@ -23,7 +23,7 @@ typedef struct Product {
     char iva_code;
     int stock;
     int sold_qty;
-    int in_basket;
+    int in_basket;  
     struct Product *next;
 } Product;
 
