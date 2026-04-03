@@ -95,8 +95,10 @@ int is_ean_valid(const char *e) {
 }
 
 long calc_total_iva(long price, int qty, int tax_percent) {
-    double total = (price * (double)qty) * (1.0 + tax_percent / 100.0);
-    return (long)(total + 0.5);
+    long base = price * qty;
+    long total = base * (100 + tax_percent);
+
+    return (total + 50) / 100;
 }
 
 int match_wild(const char *p, const char *s) {
@@ -120,23 +122,26 @@ void cmd_p(Sistema *s) {
     if (iva_c < 'A' || iva_c > 'Z' || s->taxas[iva_c - 'A'] == -1) { printf("invalid iva\n"); return; }
     if (pr <= 0) { printf("invalid price\n"); return; }
     if (qty < 0) { printf("invalid quantity\n"); return; }
-   
-int len = strlen(desc);
 
-if (len == 0 || len > 50) {
+    int len = strlen(desc);
+
+    if (len == 0 || len > 50) {
     printf("invalid description\n");
-    return;
-}
+    return;}
 
-if (!isalpha((unsigned char)desc[0]) || 
-    !isupper((unsigned char)desc[0])) {
-    printf("invalid description\n");
-    return;
-}
+    unsigned char c = (unsigned char)desc[0];
 
-/* RESTO: caracteres imprimíveis */
-for (int i = 0; i < len; i++) {
-    if (desc[i] < 32 || desc[i] > 126) {
+    /* aceita:
+    - A-Z (ASCII)
+    - OU início de caractere UTF-8 (>= 192)
+    */
+    if (!( (c >= 'A' && c <= 'Z') || c >= 192 )) {
+        printf("invalid description\n");
+        return;
+    }
+
+    for (int i = 0; i < len; i++) {
+    if ((unsigned char)desc[i] < 32) {
         printf("invalid description\n");
         return;
     }
