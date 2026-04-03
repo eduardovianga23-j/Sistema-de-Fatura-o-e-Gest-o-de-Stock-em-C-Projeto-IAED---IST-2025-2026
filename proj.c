@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <locale.h>
 
 #include "structs.h"
 
@@ -119,19 +120,27 @@ void cmd_p(Sistema *s) {
     if (iva_c < 'A' || iva_c > 'Z' || s->taxas[iva_c - 'A'] == -1) { printf("invalid iva\n"); return; }
     if (pr <= 0) { printf("invalid price\n"); return; }
     if (qty < 0) { printf("invalid quantity\n"); return; }
-   int len = strlen(desc);
+   
+int len = strlen(desc);
 
-    /* descrição vazia ou demasiado longa */
-    if (len == 0 || len > 50) {
+if (len == 0 || len > 50) {
+    printf("invalid description\n");
+    return;
+}
+
+if (!isalpha((unsigned char)desc[0]) || 
+    !isupper((unsigned char)desc[0])) {
+    printf("invalid description\n");
+    return;
+}
+
+/* RESTO: caracteres imprimíveis */
+for (int i = 0; i < len; i++) {
+    if (desc[i] < 32 || desc[i] > 126) {
         printf("invalid description\n");
         return;
     }
-
-    /* primeira letra deve ser A-Z (ASCII) */
-    if (desc[0] < 'A' || desc[0] > 'Z') {
-        printf("invalid description\n");
-        return;
-    }
+}
 
     long novo_preco = (long)(pr * 100 + 0.5);
 
@@ -172,45 +181,67 @@ void cmd_p(Sistema *s) {
 
 void cmd_l(Sistema *s) {
     char tok[MAX_LINE];
-    int c, found_any = 0;
+    int c;
+
+    /* saltar espaços */
     while (isspace(c = getchar()) && c != '\n');
 
+    /* ============================= */
+    /* 🔹 CASO: SEM ARGUMENTOS (l) */
+    /* ============================= */
     if (c == '\n' || c == EOF) {
+        int found_any = 0;
+
         for (Product *p = s->head_p; p; p = p->next) {
             if (p->stock > 0) {
                 int qty = basket_quantity(s, p->ean);
                 printf("%s %c %.2f %d %d %s\n",
                     p->ean, p->iva_code,
-                    p->price/100.0,
+                    p->price / 100.0,
                     p->sold_qty + qty,
                     p->stock,
                     p->description);
                 found_any = 1;
             }
         }
-        if (!found_any) printf("*: no such product\n");
-    } else {
-        ungetc(c, stdin);
-        while (scanf("%s", tok) == 1) {
-            found_any = 0;
-            for (Product *p = s->head_p; p; p = p->next) {
-                if (match_wild(tok, p->ean) && p->stock > 0) {
-                    int qty = basket_quantity(s, p->ean);
-                    printf("%s %c %.2f %d %d %s\n",
-                        p->ean, p->iva_code,
-                        p->price/100.0,
-                        p->sold_qty + qty,
-                        p->stock,
-                        p->description);
-                    found_any = 1;
-                }
-            }
-            if (!found_any) printf("%s: no such product\n", tok);
 
-            while (isspace(c = getchar()) && c != '\n');
-            if (c == '\n' || c == EOF) break;
-            else ungetc(c, stdin);
+        /* ⚠️ IMPORTANTE: só aqui imprime "*" */
+        if (!found_any) {
+            printf("*: no such product\n");
         }
+
+        return;
+    }
+
+    /* ============================= */
+    /* 🔹 CASO: COM ARGUMENTOS */
+    /* ============================= */
+    ungetc(c, stdin);
+
+    while (scanf("%s", tok) == 1) {
+        int found_any = 0;
+
+        for (Product *p = s->head_p; p; p = p->next) {
+            if (match_wild(tok, p->ean) && p->stock > 0) {
+                int qty = basket_quantity(s, p->ean);
+                printf("%s %c %.2f %d %d %s\n",
+                    p->ean, p->iva_code,
+                    p->price / 100.0,
+                    p->sold_qty + qty,
+                    p->stock,
+                    p->description);
+                found_any = 1;
+            }
+        }
+
+        /* 🔥 ERRO POR TOKEN */
+        if (!found_any) {
+            printf("%s: no such product\n", tok);
+        }
+
+        while (isspace(c = getchar()) && c != '\n');
+        if (c == '\n' || c == EOF) break;
+        else ungetc(c, stdin);
     }
 }
 
@@ -257,13 +288,27 @@ void cmd_a(Sistema *s) {
     ungetc(c, stdin);
     scanf("%s", buf);
 
-    if (is_ean_valid(buf)) {
-        strcpy(ean, buf);
-        qty = 1;
-    } else {
-        qty = atoi(buf);
-        scanf("%s", ean);
+   if (is_ean_valid(buf)) {
+    strcpy(ean, buf);
+    qty = 1;
+} else {
+    /* garantir que é número */
+    int is_number = 1;
+    for (int i = 0; buf[i]; i++) {
+        if (!isdigit(buf[i]) && !(i == 0 && buf[i] == '-')) {
+            is_number = 0;
+            break;
+        }
     }
+
+    if (!is_number) {
+        printf("invalid ean\n");
+        return;
+    }
+
+    qty = atoi(buf);
+    scanf("%s", ean);
+}
 
     if (!is_ean_valid(ean)) {
         printf("invalid ean\n");
@@ -373,14 +418,15 @@ void cmd_f(Sistema *s) {
     }
 
     /* calcular totais */
-    for (BasketItem *b = s->head_b; b; b = b->next) {
-        Product *p = find_product(s, b->ean);
-        if (p && b->quantity > 0) {
-            p->sold_qty += b->quantity;
-            items += b->quantity;
-            total += calc_total_iva(p->price, b->quantity, s->taxas[p->iva_code-'A']);
-        }
+   /* calcular totais */
+for (BasketItem *b = s->head_b; b; b = b->next) {
+    Product *p = find_product(s, b->ean);
+    if (p && b->quantity > 0) {
+        p->sold_qty += b->quantity;
+        items += b->quantity;
+        total += calc_total_iva(p->price, b->quantity, s->taxas[p->iva_code-'A']);
     }
+}
 
     Invoice *nv = smalloc(sizeof(Invoice));
     Invoice *curr = s->head_i, *prev = NULL;
@@ -411,49 +457,95 @@ void cmd_f(Sistema *s) {
 }
 
 void cmd_d(Sistema *s) {
-    char arg[MAX_LINE]; int c;
-    scanf("%s", arg);
+    char arg[MAX_LINE];
+    int c;
+
+    if (scanf("%s", arg) != 1)
+        return;
+
     while ((c = getchar()) == ' ' || c == '\t');
 
+    /* === CASO PRODUTO (tem quantidade) === */
     if (c != '\n' && c != EOF) {
-        int qty; scanf("%d", &qty);
-        if (!is_ean_valid(arg)) { printf("invalid ean\n"); return; }
+        ungetc(c, stdin);
+
+        int qty;
+        if (scanf("%d", &qty) != 1)
+            return;
+
+        if (!is_ean_valid(arg)) {
+            printf("invalid ean\n");
+            return;
+        }
 
         Product *p = find_product(s, arg);
-        if (!p) { printf("%s: no such product\n", arg); return; }
+        if (!p) {
+            printf("%s: no such product\n", arg);
+            return;
+        }
 
-        for (BasketItem *b = s->head_b; b; b = b->next)
+        for (BasketItem *b = s->head_b; b; b = b->next) {
             if (!strcmp(b->ean, arg) && b->quantity > 0) {
-                printf("product in use\n"); return;
+                printf("product in use\n");
+                return;
             }
+        }
 
-        if (qty <= 0 || qty > p->stock) { printf("invalid quantity\n"); return; }
+        if (qty <= 0 || qty > p->stock) {
+            printf("invalid quantity\n");
+            return;
+        }
 
         p->stock -= qty;
+
         printf("%d %s\n", p->stock, p->description);
 
         if (p->stock == 0) {
-            Product *prev = NULL;
-            Product *cur = s->head_p;
-            while (cur && cur != p) { prev = cur; cur = cur->next; }
-            if (!prev) s->head_p = p->next;
-            else prev->next = p->next;
-            if (s->tail_p == p) s->tail_p = prev;
-            free(p->description);
-            free(p);
+            Product *prev = NULL, *cur = s->head_p;
+
+            while (cur && cur != p) {
+                prev = cur;
+                cur = cur->next;
+            }
+
+            if (!prev) s->head_p = cur->next;
+            else prev->next = cur->next;
+
+            if (s->tail_p == cur)
+                s->tail_p = prev;
+
+            free(cur->description);
+            free(cur);
             s->num_p--;
         }
-    } else {
-        int id = atoi(arg);
-        Invoice *i = s->head_i, *prev = NULL;
-        while (i && i->id != id) { prev = i; i = i->next; }
-        if (!i) { printf("%d: no such invoice\n", id); return; }
+    }
 
-        printf("%.2f %ld %s\n", i->total_cents/100.0, i->nif, i->name);
-        if (!prev) s->head_i = i->next;
-        else prev->next = i->next;
-        free(i->name);
-        free(i);
+    /* === CASO FATURA === */
+    else {
+        int id = atoi(arg);
+
+        Invoice *prev = NULL, *cur = s->head_i;
+
+        while (cur && cur->id != id) {
+            prev = cur;
+            cur = cur->next;
+        }
+
+        if (!cur) {
+            printf("%d: no such invoice\n", id);
+            return;
+        }
+
+        printf("%.2f %ld %s\n",
+            cur->total_cents / 100.0,
+            cur->nif,
+            cur->name);
+
+        if (!prev) s->head_i = cur->next;
+        else prev->next = cur->next;
+
+        free(cur->name);
+        free(cur);
     }
 }
 
@@ -535,6 +627,7 @@ void cmd_c(Sistema *s) {
 }
 
 int main(int argc, char *argv[]) {
+    setlocale(LC_ALL, "");
     Sistema s = {NULL, NULL, 0, NULL, NULL, 1, {-1}};
 
     for (int i = 0; i < 26; i++) s.taxas[i] = -1;
