@@ -119,7 +119,19 @@ void cmd_p(Sistema *s) {
     if (iva_c < 'A' || iva_c > 'Z' || s->taxas[iva_c - 'A'] == -1) { printf("invalid iva\n"); return; }
     if (pr <= 0) { printf("invalid price\n"); return; }
     if (qty < 0) { printf("invalid quantity\n"); return; }
-    if (strlen(desc) > 50 || !isupper((unsigned char)desc[0])) { printf("invalid description\n"); return; }
+   int len = strlen(desc);
+
+    /* descrição vazia ou demasiado longa */
+    if (len == 0 || len > 50) {
+        printf("invalid description\n");
+        return;
+    }
+
+    /* primeira letra deve ser A-Z (ASCII) */
+    if (desc[0] < 'A' || desc[0] > 'Z') {
+        printf("invalid description\n");
+        return;
+    }
 
     long novo_preco = (long)(pr * 100 + 0.5);
 
@@ -208,15 +220,34 @@ void cmd_a(Sistema *s) {
 
     while (isspace(c = getchar()) && c != '\n');
 
+    /* LISTAR CESTO */
     if (c == '\n' || c == EOF) {
-        for (BasketItem *b = s->head_b; b; b = b->next) {
-            if (b->quantity <= 0) continue;
-            Product *p = find_product(s, b->ean);
+        /* ordenar por EAN */
+        BasketItem *arr[10000];
+        int n = 0;
+
+        for (BasketItem *b = s->head_b; b; b = b->next)
+            if (b->quantity > 0)
+                arr[n++] = b;
+
+        /* bubble sort simples */
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                if (strcmp(arr[i]->ean, arr[j]->ean) > 0) {
+                    BasketItem *tmp = arr[i];
+                    arr[i] = arr[j];
+                    arr[j] = tmp;
+                }
+
+        for (int i = 0; i < n; i++) {
+            Product *p = find_product(s, arr[i]->ean);
             if (p) {
                 printf("%c %.2f %d %.2f %s\n",
-                    p->iva_code, p->price/100.0,
-                    b->quantity,
-                    calc_total_iva(p->price, b->quantity, s->taxas[p->iva_code-'A'])/100.0,
+                    p->iva_code,
+                    p->price / 100.0,
+                    arr[i]->quantity,
+                    calc_total_iva(p->price, arr[i]->quantity,
+                        s->taxas[p->iva_code - 'A']) / 100.0,
                     p->description);
             }
         }
@@ -234,32 +265,72 @@ void cmd_a(Sistema *s) {
         scanf("%s", ean);
     }
 
-    if (!is_ean_valid(ean)) { printf("invalid ean\n"); return; }
+    if (!is_ean_valid(ean)) {
+        printf("invalid ean\n");
+        return;
+    }
 
     Product *p = find_product(s, ean);
-    if (!p) { printf("%s: no such product\n", ean); return; }
-
-    BasketItem *curr = find_basket_item(s, ean);
-
-    if (qty > 0 && p->stock < qty) { printf("no stock\n"); return; }
-
-    p->stock -= qty;
-
-    if (curr) curr->quantity += qty;
-    else {
-        BasketItem *new_b = smalloc(sizeof(BasketItem));
-        strcpy(new_b->ean, ean);
-        new_b->quantity = qty;
-        new_b->next = s->head_b;
-        s->head_b = new_b;
-        curr = new_b;
+    if (!p) {
+        printf("%s: no such product\n", ean);
+        return;
     }
+
+    BasketItem *b = find_basket_item(s, ean);
+
+    /* ➕ ADICIONAR */
+    if (qty > 0) {
+        if (p->stock < qty) {
+            printf("no stock\n");
+            return;
+        }
+
+        p->stock -= qty;
+
+        if (b) b->quantity += qty;
+        else {
+            b = smalloc(sizeof(BasketItem));
+            strcpy(b->ean, ean);
+            b->quantity = qty;
+            b->next = s->head_b;
+            s->head_b = b;
+        }
+    }
+
+    /* ➖ REMOVER */
+    else if (qty < 0) {
+        if (!b || b->quantity < -qty) {
+            printf("invalid quantity\n");
+            return;
+        }
+
+        b->quantity += qty;  /* qty é negativo */
+        p->stock -= qty;     /* devolve stock */
+
+        if (b->quantity == 0) {
+            /* remover da lista */
+            BasketItem *prev = NULL, *cur = s->head_b;
+            while (cur && cur != b) {
+                prev = cur;
+                cur = cur->next;
+            }
+
+            if (!prev) s->head_b = b->next;
+            else prev->next = b->next;
+
+            free(b);
+            b = NULL;
+        }
+    }
+
+    int total_qty = b ? b->quantity : 0;
 
     printf("%c %.2f %d %.2f %s\n",
         p->iva_code,
-        p->price/100.0,
-        curr->quantity,
-        calc_total_iva(p->price, curr->quantity, s->taxas[p->iva_code-'A'])/100.0,
+        p->price / 100.0,
+        total_qty,
+        calc_total_iva(p->price, total_qty,
+            s->taxas[p->iva_code - 'A']) / 100.0,
         p->description);
 }
 
@@ -290,7 +361,6 @@ void cmd_f(Sistema *s) {
         }
     }
 
-    /* ✅ FIX: tratar "error" ANTES de criar fatura */
     if (!strcmp(nome, "error")) {
         while (s->head_b) {
             BasketItem *t = s->head_b;
@@ -312,7 +382,6 @@ void cmd_f(Sistema *s) {
         }
     }
 
-    /* ✅ FIX: só agora criar fatura */
     Invoice *nv = smalloc(sizeof(Invoice));
     Invoice *curr = s->head_i, *prev = NULL;
 
@@ -394,30 +463,56 @@ void cmd_r(Sistema *s) {
 
     while (isspace(c = getchar()) && c != '\n');
 
+    /* 🔹 SEM ARGUMENTOS */
     if (c == '\n' || c == EOF) {
-        long it = 0, fcs = 0, tot = 0;
+        long total_items = 0;
+        long total_facturas = 0;
+        long total_valor = 0;
+
         for (Invoice *i = s->head_i; i; i = i->next) {
-            it += i->items_count;
-            fcs++;
-            tot += i->total_cents;
+            total_items += i->items_count;
+            total_facturas++;
+            total_valor += i->total_cents;
         }
-        printf("%ld %ld %.2f\n", it, fcs, tot/100.0);
 
-        for (int j = 0; j < 26; j++)
-            if (s->taxas[j] != -1)
-                printf("%c %d%%\n", 'A'+j, s->taxas[j]);
-    } else {
-        ungetc(c, stdin);
-        if (scanf("%s", ean) != 1) return;
+        printf("%ld %ld %.2f\n",
+            total_items,
+            total_facturas,
+            total_valor / 100.0);
 
-        if (!is_ean_valid(ean)) { printf("invalid ean\n"); return; }
+        /* imprimir IVA ordenado */
+        for (int j = 0; j < 26; j++) {
+            if (s->taxas[j] != -1) {
+                printf("%c %d%%\n", 'A' + j, s->taxas[j]);
+            }
+        }
 
-        Product *p = find_product(s, ean);
-        if (!p) { printf("%s: no such product\n", ean); return; }
-
-        int total_vendas = p->sold_qty + basket_quantity(s, ean);
-        printf("%d %d %s\n", p->stock, total_vendas, p->description);
+        return;
     }
+
+    /* 🔹 COM EAN */
+    ungetc(c, stdin);
+
+    if (scanf("%s", ean) != 1)
+        return;
+
+    if (!is_ean_valid(ean)) {
+        printf("invalid ean\n");
+        return;
+    }
+
+    Product *p = find_product(s, ean);
+    if (!p) {
+        printf("%s: no such product\n", ean);
+        return;
+    }
+
+    int total_vendido = p->sold_qty + basket_quantity(s, ean);
+
+    printf("%d %d %s\n",
+        p->stock,
+        total_vendido,
+        p->description);
 }
 
 void cmd_c(Sistema *s) {
@@ -445,15 +540,21 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < 26; i++) s.taxas[i] = -1;
     s.taxas[0]=0; s.taxas[1]=6; s.taxas[2]=13; s.taxas[3]=23;
 
-    if (argc > 1) {
-        FILE *f = fopen(argv[1], "r");
-        if (f) {
-            char ch; int v;
-            while (fscanf(f, " %c %d", &ch, &v) == 2)
-                s.taxas[ch-'A'] = v;
-            fclose(f);
+   if (argc > 1) {
+    /* limpar taxas */
+    for (int i = 0; i < 26; i++)
+        s.taxas[i] = -1;
+
+    FILE *f = fopen(argv[1], "r");
+    if (f) {
+        char ch;
+        int v;
+        while (fscanf(f, " %c %d", &ch, &v) == 2) {
+            s.taxas[ch - 'A'] = v;
         }
+        fclose(f);
     }
+}
 
     char cmd;
     while (scanf(" %c", &cmd) == 1 && cmd != 'q') {
