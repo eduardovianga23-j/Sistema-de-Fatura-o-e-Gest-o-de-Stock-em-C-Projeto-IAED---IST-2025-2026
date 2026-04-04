@@ -63,10 +63,28 @@ BasketItem* find_basket_item(Sistema *s, const char *ean) {
 }
 
 int match_wild(const char *p, const char *s) {
-    if (!*p) return !*s;
-    if (*p == '*') return match_wild(p+1, s) || (*s && match_wild(p, s+1));
-    if (*s && (*p == '?' || *p == *s)) return match_wild(p+1, s+1);
-    return 0;
+    const char *star = NULL, *ss = NULL;
+
+    while (*s) {
+        if (*p == '?' || *p == *s) {
+            p++; s++;
+        }
+        else if (*p == '*') {
+            star = p++;
+            ss = s;
+        }
+        else if (star) {
+            p = star + 1;
+            s = ++ss;
+        }
+        else {
+            return 0;
+        }
+    }
+
+    while (*p == '*') p++;
+
+    return *p == '\0';
 }
 
 int basket_quantity(Sistema *s, const char *ean) {
