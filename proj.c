@@ -95,10 +95,10 @@ int is_ean_valid(const char *e) {
 }
 
 long calc_total_iva(long price, int qty, int tax_percent) {
-    long base = price * qty;
-    long total = base * (100 + tax_percent);
+    long long base = (long long)price * qty;
+    long long total = base * (100 + tax_percent);
 
-    return (total + 50) / 100;
+    return (long)((total + 50) / 100);
 }
 
 int match_wild(const char *p, const char *s) {
@@ -266,14 +266,20 @@ void cmd_a(Sistema *s) {
             if (b->quantity > 0)
                 arr[n++] = b;
 
-        /* bubble sort simples */
-        for (int i = 0; i < n; i++)
-            for (int j = i + 1; j < n; j++)
-                if (strcmp(arr[i]->ean, arr[j]->ean) > 0) {
-                    BasketItem *tmp = arr[i];
-                    arr[i] = arr[j];
-                    arr[j] = tmp;
+       for (int i = 0; i < n - 1; i++) {
+            int swapped = 0;
+
+            for (int j = 0; j < n - i - 1; j++) {
+                if (strcmp(arr[j]->ean, arr[j + 1]->ean) > 0) {
+                    BasketItem *tmp = arr[j];
+                    arr[j] = arr[j + 1];
+                    arr[j + 1] = tmp;
+                    swapped = 1;
                 }
+            }
+
+            if (!swapped) break;
+        }
 
         for (int i = 0; i < n; i++) {
             Product *p = find_product(s, arr[i]->ean);
@@ -311,7 +317,15 @@ void cmd_a(Sistema *s) {
         return;
     }
 
-    qty = atoi(buf);
+    char *end;
+    long val = strtol(buf, &end, 10);
+
+    if (*end != '\0') {
+        printf("invalid ean\n");
+        return;
+    }
+
+    qty = (int)val;
     scanf("%s", ean);
 }
 
