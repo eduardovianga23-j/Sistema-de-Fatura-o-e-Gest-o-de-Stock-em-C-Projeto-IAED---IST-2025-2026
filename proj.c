@@ -1,5 +1,18 @@
 /* iaed26 - ist1119719 - project */
 
+/**
+ * @file proj.c
+ * @brief 
+ * Billing system in C for managing products, cart, and invoices.
+ * Supports products with EAN-8/EAN-13 validation, price, VAT, and stock.
+ * Uses VAT rates from file or default values.
+ * Handles cart operations with stock control and consistency.
+ * Generates invoices with NIF, client name, total with VAT, and rounding.
+ * Provides command-based input with dynamic memory and no global variables.
+ * @author Eduardo João Vianga, ist1119719
+ * @date March 20, 2025
+ */
+ 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
