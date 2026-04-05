@@ -48,19 +48,26 @@ void free_all(Sistema *s) {
 
 void read_name_or_token(char *buffer) {
     int c, i = 0;
-    while (isspace(c = getchar()) && c != '\n');
+
+    /* saltar espaços (SEM comer \n) */
+    while ((c = getchar()) == ' ' || c == '\t') {}
+
     if (c == '"') {
-        while ((c = getchar()) != '"' && c != EOF) buffer[i++] = (char)c;
+        /* nome entre aspas */
+        while ((c = getchar()) != '"' && c != EOF)
+            buffer[i++] = (char)c;
     } else {
-        while (c != EOF && !isspace(c) && c != '\n') {
+        /* palavra normal */
+        while (c != EOF && c != '\n' && c != ' ' && c != '\t') {
             buffer[i++] = (char)c;
             c = getchar();
         }
-        if (c != EOF) ungetc(c, stdin);
+        if (c != EOF)
+            ungetc(c, stdin);
     }
+
     buffer[i] = '\0';
 }
-
 /* ================= AUX ================= */
 
 Product* find_product(Sistema *s, const char *ean) {
@@ -98,6 +105,28 @@ int match_wild(const char *p, const char *s) {
     while (*p == '*') p++;
 
     return *p == '\0';
+}
+
+int valid_name(const char *name) {
+    if (!name || !isalpha((unsigned char)name[0]))
+        return 0;
+
+    for (int i = 0; name[i]; i++)
+        if (!isprint((unsigned char)name[i]))
+            return 0;
+
+    return 1;
+}
+
+int valid_nif(const char *s) {
+    if (strlen(s) != 9) return 0;
+
+    for (int i = 0; i < 9; i++)
+        if (!isdigit(s[i])) return 0;
+
+    if (s[0] == '0') return 0;
+
+    return 1;
 }
 
 int basket_quantity(Sistema *s, const char *ean) {
@@ -329,13 +358,13 @@ void cmd_a(Sistema *s) {
     char buf[MAX_LINE], ean[MAX_LINE];
     int qty = 1, c;
 
-    while (isspace(c = getchar()) && c != '\n');
+   while ((c = getchar()) == ' ' || c == '\t') {}
 
     if (c == '\n' || c == EOF) {
         list_basket(s);
         return;
     }
-
+ 
     ungetc(c, stdin);
     scanf("%s", buf);
 
@@ -393,34 +422,56 @@ void cmd_a(Sistema *s) {
 }
 
 void cmd_f(Sistema *s) {
-    char nome[MAX_LINE] = "Cliente final", buf[MAX_LINE];
-    long nif = 999999999, total = 0;
-    int items = 0, c;
+    char nome[MAX_LINE] = "Cliente final";
+    char buf[MAX_LINE];
+    long nif = 999999999;
+    int items = 0;
+    long total = 0;
+    int c;
 
-    while (isspace(c = getchar()) && c != '\n');
+    while ((c = getchar()) == ' ' || c == '\t') {}
 
     if (c != '\n' && c != EOF) {
         ungetc(c, stdin);
+
         read_name_or_token(buf);
 
-        int valid = strlen(buf) == 9;
-        for (int i = 0; i < 9 && valid; i++)
-            if (!isdigit(buf[i])) valid = 0;
-
-        if (valid) {
+        if (valid_nif(buf)) {
             nif = atol(buf);
-            read_name_or_token(nome);
-        } else strcpy(nome, buf);
-    }
 
-   if (!strcmp(nome, "error")) {
-    for (BasketItem *b = s->head_b; b; b = b->next) {
-        Product *p = find_product(s, b->ean);
-        if (p) p->stock += b->quantity;
+           /* tentar ler nome */
+          int c2 = getchar();
+
+            if (c2 == '\n' || c2 == EOF) {
+                /* não há nome → fica "Cliente final" */
+            } else {
+                ungetc(c2, stdin);
+
+                read_name_or_token(nome);
+
+                if (!valid_name(nome)) {
+                    printf("invalid name\n");
+                    return;
+                }
+            }
+        }
+        else {
+            /* se parece NIF mas inválido */
+          /* se for número → tratar como NIF inválido */
+            if (strspn(buf, "0123456789") == strlen(buf)) {
+        printf("%s: no such nif\n", buf);
+        return;
+            }
+
+            /* caso contrário é nome */
+            if (!valid_name(buf)) {
+                printf("invalid name\n");
+                return;
+            }
+
+            strcpy(nome, buf);
+        }
     }
-    clear_basket(s);
-    return;
-}
 
     calculate_totals(s, &items, &total);
 
@@ -431,8 +482,7 @@ void cmd_f(Sistema *s) {
     nv->items_count = items;
     nv->total_cents = total;
 
-        Invoice *curr = s->head_i;
-    Invoice *prev = NULL;
+    Invoice *curr = s->head_i, *prev = NULL;
 
     while (curr && (strcmp(curr->name, nome) < 0 ||
         (strcmp(curr->name, nome) == 0 && curr->id < nv->id))) {
@@ -455,7 +505,7 @@ void cmd_l(Sistema *s) {
     int c;
 
     /* saltar espaços */
-    while (isspace(c = getchar()) && c != '\n');
+    while ((c = getchar()) == ' ' || c == '\t') {}
 
     /* ============================= */
     /* 🔹 CASO: SEM ARGUMENTOS (l) */
@@ -523,7 +573,7 @@ void cmd_d(Sistema *s) {
     if (scanf("%s", arg) != 1)
         return;
 
-    while ((c = getchar()) == ' ' || c == '\t');
+    while ((c = getchar()) == ' ' || c == '\t') {}
 
     /* === CASO PRODUTO === */
     if (c != '\n' && c != EOF) {
@@ -613,7 +663,7 @@ void cmd_r(Sistema *s) {
     char ean[MAX_LINE];
     int c;
 
-    while (isspace(c = getchar()) && c != '\n');
+   while ((c = getchar()) == ' ' || c == '\t') {}
 
     /* 🔹 SEM ARGUMENTOS */
     if (c == '\n' || c == EOF) {
@@ -671,7 +721,7 @@ void cmd_r(Sistema *s) {
 
 void cmd_c(Sistema *s) {
     char nome[MAX_LINE]; int c, fnd = 0;
-    while (isspace(c = getchar()) && c != '\n');
+    while ((c = getchar()) == ' ' || c == '\t') {}
 
     if (c == '\n' || c == EOF) {
         for (Invoice *i = s->head_i; i; i = i->next)
