@@ -202,44 +202,122 @@ void calculate_totals(Sistema *s, int *items, long *total) {
     }
 }
 
+long long convert_str_centimos(const char *preco) {
+    if (!preco || preco[0] == '-') return -1;
+
+    long long euros = 0, cents = 0;
+    char *dot = strchr(preco, '.');
+
+    if (!dot) {
+        return atoll(preco) * 100;
+    }
+
+    euros = atoll(preco);
+
+    char cent_str[10];
+    strncpy(cent_str, dot + 1, 3); /* até 3 dígitos */
+    cent_str[3] = '\0';
+
+    int len = strlen(cent_str);
+
+    if (len == 0) {
+        cents = 0;
+    } 
+    else if (len == 1) {
+        cents = (cent_str[0] - '0') * 10;
+    } 
+    else {
+        cents = (cent_str[0] - '0') * 10 + (cent_str[1] - '0');
+
+        /* 🔥 arredondamento correto */
+        if (len >= 3 && cent_str[2] >= '5')
+            cents++;
+    }
+
+    if (cents >= 100) {
+        euros++;
+        cents -= 100;
+    }
+
+    return euros * 100 + cents;
+}
+
 /* ================= COMANDOS ================= */
 
 void cmd_p(Sistema *s) {
-    char ean[MAX_LINE], iva, desc[MAX_LINE];
-    double pr; int qty;
+    char ean[MAX_LINE], iva, desc[MAX_LINE], price_str[32];
+    int qty;
 
-    if (scanf("%s %c %lf %d", ean, &iva, &pr, &qty) != 4) return;
-    if (scanf(" %[^\n]", desc) != 1) desc[0] = '\0';
+    if (scanf("%s %c %s %d", ean, &iva, price_str, &qty) != 4)
+        return;
 
-    if (!is_ean_valid(ean)) { printf("invalid ean\n"); return; }
-    if (iva < 'A' || iva > 'Z' || s->taxas[iva - 'A'] == -1) { printf("invalid iva\n"); return; }
-    if (pr <= 0) { printf("invalid price\n"); return; }
-    if (qty < 0) { printf("invalid quantity\n"); return; }
-    if (!valid_description(desc)) { printf("invalid description\n"); return; }
+    if (scanf(" %[^\n]", desc) != 1)
+        desc[0] = '\0';
 
-    long price = (long)(pr * 100 + 0.5);
+    long long price = convert_str_centimos(price_str);
+
+    /* validações */
+    if (!is_ean_valid(ean)) {
+        printf("invalid ean\n");
+        return;
+    }
+
+    if (iva < 'A' || iva > 'Z' || s->taxas[iva - 'A'] == -1) {
+        printf("invalid iva\n");
+        return;
+    }
+
+    if (price <= 0) {
+        printf("invalid price\n");
+        return;
+    }
+
+    if (qty < 0) {
+        printf("invalid quantity\n");
+        return;
+    }
+
+    if (!valid_description(desc)) {
+        printf("invalid description\n");
+        return;
+    }
+
     Product *p = find_product(s, ean);
 
     if (p) {
-        if (find_basket_item(s, ean)) { printf("product in use\n"); return; }
+        if (find_basket_item(s, ean)) {
+            printf("product in use\n");
+            return;
+        }
+
         p->stock += qty;
-        p->price = price;
+        p->price = (long)price;
         p->iva_code = iva;
+
         free(p->description);
         p->description = sstrdup(desc);
-    } else {
-        if (s->num_p >= MAX_PRODUCTS) { printf("invalid product\n"); return; }
+    }
+    else {
+        if (s->num_p >= MAX_PRODUCTS) {
+            printf("invalid product\n");
+            return;
+        }
+
         p = smalloc(sizeof(Product));
+
         strcpy(p->ean, ean);
         p->description = sstrdup(desc);
-        p->price = price;
+        p->price = (long)price;
         p->iva_code = iva;
         p->stock = qty;
         p->sold_qty = 0;
         p->next = NULL;
 
-        if (!s->head_p) s->head_p = p;
-        else s->tail_p->next = p;
+        if (!s->head_p)
+            s->head_p = p;
+        else
+            s->tail_p->next = p;
+
         s->tail_p = p;
         s->num_p++;
     }
