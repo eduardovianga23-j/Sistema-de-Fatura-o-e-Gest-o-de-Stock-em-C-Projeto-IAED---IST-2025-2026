@@ -46,28 +46,35 @@ void free_all(Sistema *s) {
     while (i) { Invoice *t = i->next; free(i->name); free(i); i = t; }
 }
 
-void read_name_or_token(char *buffer) {
+int read_name_or_token(char *buffer, int *is_quoted) {
     int c, i = 0;
+    *is_quoted = 0;
 
-    /* saltar espaços (SEM comer \n) */
-    while ((c = getchar()) == ' ' || c == '\t') {}
+    while ((c = getchar()) == ' ' || c == '\t');
 
     if (c == '"') {
-        /* nome entre aspas */
-        while ((c = getchar()) != '"' && c != EOF)
+        *is_quoted = 1;
+
+        while ((c = getchar()) != '"' && c != '\n' && c != EOF) {
             buffer[i++] = (char)c;
-    } else {
-        /* palavra normal */
+        }
+
+        if (c != '"') return 0;
+    } 
+    else {
         while (c != EOF && c != '\n' && c != ' ' && c != '\t') {
             buffer[i++] = (char)c;
             c = getchar();
         }
+
         if (c != EOF)
             ungetc(c, stdin);
     }
 
     buffer[i] = '\0';
+    return 1;
 }
+
 /* ================= AUX ================= */
 
 Product* find_product(Sistema *s, const char *ean) {
@@ -427,27 +434,49 @@ void cmd_f(Sistema *s) {
     long nif = 999999999;
     int items = 0;
     long total = 0;
-    int c;
+    int c, quoted;
 
-    while ((c = getchar()) == ' ' || c == '\t') {}
+    /* saltar espaços */
+    while ((c = getchar()) == ' ' || c == '\t');
 
+    /* ===================== */
+    /* 🔹 TEM ARGUMENTOS */
+    /* ===================== */
     if (c != '\n' && c != EOF) {
         ungetc(c, stdin);
 
-        read_name_or_token(buf);
+        /* ler primeiro token */
+        if (!read_name_or_token(buf, &quoted)) {
+            printf("invalid name\n");
+            return;
+        }
 
-        if (valid_nif(buf)) {
+        /* ===================== */
+        /* 🔹 CASO: STRING ENTRE ASPAS → NOME */
+        /* ===================== */
+        if (quoted) {
+            if (!valid_name(buf)) {
+                printf("invalid name\n");
+                return;
+            }
+            strcpy(nome, buf);
+        }
+
+        /* ===================== */
+        /* 🔹 CASO: NIF VÁLIDO */
+        /* ===================== */
+        else if (valid_nif(buf)) {
             nif = atol(buf);
 
-           /* tentar ler nome */
-          int c2 = getchar();
+            while ((c = getchar()) == ' ' || c == '\t');
 
-            if (c2 == '\n' || c2 == EOF) {
-                /* não há nome → fica "Cliente final" */
-            } else {
-                ungetc(c2, stdin);
+            if (c != '\n' && c != EOF) {
+                ungetc(c, stdin);
 
-                read_name_or_token(nome);
+                if (!read_name_or_token(nome, &quoted)) {
+                    printf("invalid name\n");
+                    return;
+                }
 
                 if (!valid_name(nome)) {
                     printf("invalid name\n");
@@ -455,15 +484,27 @@ void cmd_f(Sistema *s) {
                 }
             }
         }
-        else {
-            /* se parece NIF mas inválido */
-          /* se for número → tratar como NIF inválido */
-            if (strspn(buf, "0123456789") == strlen(buf)) {
-        printf("%s: no such nif\n", buf);
-        return;
-            }
 
-            /* caso contrário é nome */
+        /* ===================== */
+        /* 🔹 NÚMERO PURO MAS NÃO NIF */
+        /* ===================== */
+        else if (strspn(buf, "0123456789") == strlen(buf)) {
+            printf("%s: no such nif\n", buf);
+            return;
+        }
+
+        /* ===================== */
+        /* 🔹 COMEÇA POR NÚMERO → INVÁLIDO */
+        /* ===================== */
+        else if (isdigit(buf[0])) {
+            printf("invalid name\n");
+            return;
+        }
+
+        /* ===================== */
+        /* 🔹 NOME NORMAL */
+        /* ===================== */
+        else {
             if (!valid_name(buf)) {
                 printf("invalid name\n");
                 return;
@@ -473,6 +514,9 @@ void cmd_f(Sistema *s) {
         }
     }
 
+    /* ===================== */
+    /* 🔹 CRIAR FATURA */
+    /* ===================== */
     calculate_totals(s, &items, &total);
 
     Invoice *nv = smalloc(sizeof(Invoice));
@@ -727,9 +771,10 @@ void cmd_c(Sistema *s) {
         for (Invoice *i = s->head_i; i; i = i->next)
             printf("%d %.2f %s\n", i->id, i->total_cents/100.0, i->name);
     } else {
-        ungetc(c, stdin);
-        read_name_or_token(nome);
-        for (Invoice *i = s->head_i; i; i = i->next)
+    int quoted;
+    ungetc(c, stdin);
+    read_name_or_token(nome, &quoted);
+    for (Invoice *i = s->head_i; i; i = i->next)
             if (!strcmp(i->name, nome)) {
                 printf("%d %.2f %s\n", i->id, i->total_cents/100.0, i->name);
                 fnd = 1;
