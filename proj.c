@@ -3,6 +3,7 @@
  * @file proj.c
  * @brief Sistema de faturação com gestão de produtos, cesto e faturas.
  * Mantém a lógica original e melhora modularidade/complexidade.
+
  * @author Eduardo João Vianga
  * @date March 2025
  */
@@ -33,6 +34,21 @@ char* sstrdup(const char *s) {
     return strcpy(d, s);
 }
 
+/** @brief Wildcard match */
+int match_wild(const char *p, const char *s) {
+    const char *star = NULL, *ss = NULL;
+
+    while (*s) {
+        if (*p == '?' || *p == *s) { p++; s++; }
+        else if (*p == '*') { star = p++; ss = s; }
+        else if (star) { p = star + 1; s = ++ss; }
+        else return 0;
+    }
+
+    while (*p == '*') p++;
+    return *p == '\0';
+}
+
 /** @brief Liberta toda a memória */
 void free_all(Sistema *s) {
     Product *p = s->head_p;
@@ -43,6 +59,68 @@ void free_all(Sistema *s) {
 
     Invoice *i = s->head_i;
     while (i) { Invoice *t = i->next; free(i->name); free(i); i = t; }
+}
+
+/** @brief Remove item do cesto */
+void remove_basket_item(Sistema *s, BasketItem *b) {
+    BasketItem *prev = NULL, *cur = s->head_b;
+    while (cur && cur != b) { prev = cur; cur = cur->next; }
+    if (!prev) s->head_b = b->next;
+    else prev->next = b->next;
+    b->product->basket_qty = 0;
+    free(b);
+}
+
+/** @brief Insere fatura ordenada */
+void insert_invoice_sorted(Sistema *s, Invoice *nv) {
+    Invoice *curr = s->head_i, *prev = NULL;
+    while (curr && (strcmp(curr->name, nv->name) < 0 ||
+        (strcmp(curr->name, nv->name) == 0 && curr->id < nv->id))) {
+        prev = curr; curr = curr->next;
+    }
+    nv->next = curr;
+    if (!prev) s->head_i = nv;
+    else prev->next = nv;
+}
+
+void print_product_line(Product *p) {
+    int qty = p->basket_qty;
+
+    printf("%s %c %.2f %d %d %s\n",
+        p->ean,
+        p->iva_code,
+        p->price / 100.0,
+        p->sold_qty + qty,
+        p->stock,
+        p->description);
+}
+
+void list_all_products(Sistema *s) {
+    int found_any = 0;
+
+    for (Product *p = s->head_p; p; p = p->next) {
+        if (p->stock > 0) {
+            print_product_line(p);
+            found_any = 1;
+        }
+    }
+
+    if (!found_any)
+        printf("*: no such product\n");
+}
+
+void list_products_pattern(Sistema *s, char *tok) {
+    int found_any = 0;
+
+    for (Product *p = s->head_p; p; p = p->next) {
+        if (match_wild(tok, p->ean) && p->stock > 0) {
+            print_product_line(p);
+            found_any = 1;
+        }
+    }
+
+    if (!found_any)
+        printf("%s: no such product\n", tok);
 }
 
 /** @brief Lê nome ou token */
@@ -89,21 +167,6 @@ BasketItem* find_basket_item(Sistema *s, const char *ean) {
     for (BasketItem *b = s->head_b; b; b = b->next)
         if (!strcmp(b->product->ean, ean)) return b;
     return NULL;
-}
-
-/** @brief Wildcard match */
-int match_wild(const char *p, const char *s) {
-    const char *star = NULL, *ss = NULL;
-
-    while (*s) {
-        if (*p == '?' || *p == *s) { p++; s++; }
-        else if (*p == '*') { star = p++; ss = s; }
-        else if (star) { p = star + 1; s = ++ss; }
-        else return 0;
-    }
-
-    while (*p == '*') p++;
-    return *p == '\0';
 }
 
 /** @brief Valida nome */
@@ -234,28 +297,269 @@ long long convert_str_centimos(const char *preco) {
     return euros * 100 + cents;
 }
 
-/* ================= HELPERS EXTRA ================= */
+/* ================= CMD FUNCTION ================= */
 
-/** @brief Remove item do cesto */
-void remove_basket_item(Sistema *s, BasketItem *b) {
-    BasketItem *prev = NULL, *cur = s->head_b;
-    while (cur && cur != b) { prev = cur; cur = cur->next; }
-    if (!prev) s->head_b = b->next;
-    else prev->next = b->next;
-    b->product->basket_qty = 0;
-    free(b);
+void handle_product_removal(Sistema *s, char *ean, int qty) {
+
+    if (!is_ean_valid(ean)) {
+        printf("invalid ean\n");
+        return;
+    }
+
+    Product *p = find_product(s, ean);
+
+    if (!p) {
+        printf("%s: no such product\n", ean);
+        return;
+    }
+
+    if (p->basket_qty > 0) {
+        printf("product in use\n");
+        return;
+    }
+
+    if (qty <= 0 || qty > p->stock) {
+        printf("invalid quantity\n");
+        return;
+    }
+
+    p->stock -= qty;
+
+    printf("%d %s\n", p->stock, p->description);
+
+    // remover produto se stock = 0
+    if (p->stock == 0) {
+        Product *prev = NULL, *cur = s->head_p;
+
+        while (cur && cur != p) {
+            prev = cur;
+            cur = cur->next;
+        }
+
+        if (!prev) s->head_p = cur->next;
+        else prev->next = cur->next;
+
+        if (s->tail_p == cur)
+            s->tail_p = prev;
+
+        free(cur->description);
+        free(cur);
+        s->num_p--;
+    }
 }
 
-/** @brief Insere fatura ordenada */
-void insert_invoice_sorted(Sistema *s, Invoice *nv) {
-    Invoice *curr = s->head_i, *prev = NULL;
-    while (curr && (strcmp(curr->name, nv->name) < 0 ||
-        (strcmp(curr->name, nv->name) == 0 && curr->id < nv->id))) {
-        prev = curr; curr = curr->next;
+void handle_invoice_removal(Sistema *s, int id) {
+
+    Invoice *prev = NULL, *cur = s->head_i;
+
+    while (cur && cur->id != id) {
+        prev = cur;
+        cur = cur->next;
     }
-    nv->next = curr;
-    if (!prev) s->head_i = nv;
-    else prev->next = nv;
+
+    if (!cur) {
+        printf("%d: no such invoice\n", id);
+        return;
+    }
+
+    printf("%.2f %ld %s\n",
+        cur->total_cents / 100.0,
+        cur->nif,
+        cur->name);
+
+    if (!prev) s->head_i = cur->next;
+    else prev->next = cur->next;
+
+    free(cur->name);
+    free(cur);
+}
+
+/* ================= CMD A FUNCTION ================= */
+
+int parse_cmd_a(CmdAInput *in) {
+    char buf[MAX_LINE];
+    int c;
+
+    in->qty = 1;
+    in->show_only = 0;
+
+    while ((c = getchar()) == ' ' || c == '\t');
+
+    if (c == '\n' || c == EOF) {
+        in->show_only = 1;
+        return 1;
+    }
+
+    ungetc(c, stdin);
+
+    if (scanf("%s", buf) != 1) return 0;
+
+    if (is_ean_valid(buf)) {
+        strcpy(in->ean, buf);
+    } else {
+        char *end;
+        long val = strtol(buf, &end, 10);
+
+        if (*end != '\0') {
+            printf("invalid ean\n");
+            return 0;
+        }
+
+        in->qty = (int)val;
+
+        if (scanf("%s", in->ean) != 1) return 0;
+    }
+
+    return 1;
+}
+
+int validate_cmd_a(Sistema *s, CmdAInput *in, Product **p) {
+
+    if (!is_ean_valid(in->ean)) {
+        printf("invalid ean\n");
+        return 0;
+    }
+
+    *p = find_product(s, in->ean);
+
+    if (!(*p)) {
+        printf("%s: no such product\n", in->ean);
+        return 0;
+    }
+
+    return 1;
+}
+
+int update_basket(Sistema *s, Product *p, int qty) {
+
+    BasketItem *b = find_basket_item(s, p->ean);
+
+    if (qty > 0) {
+        if (p->stock < qty) {
+            printf("no stock\n");
+            return 0;
+        }
+
+        p->stock -= qty;
+        p->basket_qty += qty;
+
+        if (b) {
+            b->quantity += qty;
+        } else {
+            b = smalloc(sizeof(BasketItem));
+            b->product = p;
+            b->quantity = qty;
+            b->next = NULL;
+            insert_basket_sorted(s, b);
+        }
+
+    } else if (qty < 0) {
+        if (!b || b->quantity < -qty) {
+            printf("invalid quantity\n");
+            return 0;
+        }
+
+        b->quantity += qty;
+        p->stock += -qty;
+        p->basket_qty -= (-qty);
+
+        if (b->quantity == 0)
+            remove_basket_item(s, b);
+    }
+
+    return 1;
+}
+
+void print_cmd_a(Product *p, Sistema *s) {
+    int total = p->basket_qty;
+
+    printf("%c %.2f %d %.2f %s\n",
+        p->iva_code,
+        p->price / 100.0,
+        total,
+        calc_total_iva(p->price, total,
+            s->taxas[p->iva_code - 'A']) / 100.0,
+        p->description);
+}
+
+/* ================= CMD F FUNCTION ================= */
+
+int parse_client_info(char *nome, long *nif) {
+    char buf[MAX_LINE];
+    int c, quoted;
+
+    strcpy(nome, "Cliente final");
+    *nif = 999999999;
+
+    while ((c = getchar()) == ' ' || c == '\t');
+
+    if (c == '\n' || c == EOF)
+        return 1;
+
+    ungetc(c, stdin);
+
+    if (!read_name_or_token(buf, &quoted)) {
+        printf("invalid name\n");
+        return 0;
+    }
+
+    if (quoted) {
+        strcpy(nome, buf);
+        return 1;
+    }
+
+    if (valid_nif(buf)) {
+        *nif = atol(buf);
+
+        while ((c = getchar()) == ' ' || c == '\t');
+
+        if (c != '\n' && c != EOF) {
+            ungetc(c, stdin);
+
+            if (!read_name_or_token(nome, &quoted) || !valid_name(nome)) {
+                printf("invalid name\n");
+                return 0;
+            }
+        }
+
+        return 1;
+    }
+
+    if (strspn(buf, "0123456789") == strlen(buf)) {
+        printf("%s: no such nif\n", buf);
+        return 0;
+    }
+
+    if (!valid_name(buf)) {
+        printf("invalid name\n");
+        return 0;
+    }
+
+    strcpy(nome, buf);
+    return 1;
+}
+
+Invoice* create_invoice(Sistema *s, char *nome, long nif, int items, long total) {
+
+    Invoice *nv = smalloc(sizeof(Invoice));
+
+    nv->id = s->next_inv_id++;
+    nv->nif = nif;
+    nv->name = sstrdup(nome);
+    nv->items_count = items;
+    nv->total_cents = total;
+    nv->next = NULL;
+
+    insert_invoice_sorted(s, nv);
+
+    return nv;
+}
+
+void print_invoice(Invoice *nv, int items, long total) {
+    printf("%d %.2f %d\n",
+        items,
+        total / 100.0,
+        nv->id);
 }
 
 /* ================= COMANDOS ================= */
@@ -310,120 +614,38 @@ void cmd_p(Sistema *s) {
 
 /** @brief Comando a */
 void cmd_a(Sistema *s) {
-    char buf[MAX_LINE], ean[MAX_LINE];
-    int qty = 1, c;
+    CmdAInput in;
+    Product *p;
 
-    while ((c = getchar()) == ' ' || c == '\t') {}
-    if (c == '\n' || c == EOF) { list_basket(s); return; }
+    if (!parse_cmd_a(&in)) return;
 
-    ungetc(c, stdin);
-    scanf("%s", buf);
-
-    if (is_ean_valid(buf)) strcpy(ean, buf);
-    else {
-        char *end;
-        long val = strtol(buf, &end, 10);
-        if (*end != '\0') { printf("invalid ean\n"); return; }
-        qty = (int)val;
-        if (scanf("%s", ean) != 1) return;
+    if (in.show_only) {
+        list_basket(s);
+        return;
     }
 
-    if (!is_ean_valid(ean)) { printf("invalid ean\n"); return; }
+    if (!validate_cmd_a(s, &in, &p)) return;
 
-    Product *p = find_product(s, ean);
-    if (!p) { printf("%s: no such product\n", ean); return; }
+    if (!update_basket(s, p, in.qty)) return;
 
-    BasketItem *b = find_basket_item(s, ean);
-
-    if (qty > 0) {
-        if (p->stock < qty) { printf("no stock\n"); return; }
-        p->stock -= qty;
-        p->basket_qty += qty;
-
-        if (b) b->quantity += qty;
-        else {
-            b = smalloc(sizeof(BasketItem));
-            b->product = p;
-            b->quantity = qty;
-            b->next = NULL;
-            insert_basket_sorted(s, b);
-        }
-    } else if (qty < 0) {
-        if (!b || b->quantity < -qty) { printf("invalid quantity\n"); return; }
-        b->quantity += qty;
-        p->stock += -qty;
-        p->basket_qty -= (-qty);
-        if (b->quantity == 0) remove_basket_item(s, b);
-    }
-
-    int total = p->basket_qty;
-
-    printf("%c %.2f %d %.2f %s\n",
-        p->iva_code,
-        p->price / 100.0,
-        total,
-        calc_total_iva(p->price, total,
-            s->taxas[p->iva_code - 'A']) / 100.0,
-        p->description);
+    print_cmd_a(p, s);
 }
 
 /** @brief Comando f */
 void cmd_f(Sistema *s) {
-    char nome[MAX_LINE] = "Cliente final";
-    char buf[MAX_LINE];
-    long nif = 999999999;
+    char nome[MAX_LINE];
+    long nif;
     int items = 0;
     long total = 0;
-    int c, quoted;
 
-    while ((c = getchar()) == ' ' || c == '\t');
-
-    if (c != '\n' && c != EOF) {
-        ungetc(c, stdin);
-
-        if (!read_name_or_token(buf, &quoted)) {
-            printf("invalid name\n");
-            return;
-        }
-
-        if (quoted) strcpy(nome, buf);
-        else if (valid_nif(buf)) {
-            nif = atol(buf);
-
-            while ((c = getchar()) == ' ' || c == '\t');
-            if (c != '\n' && c != EOF) {
-                ungetc(c, stdin);
-                if (!read_name_or_token(nome, &quoted) || !valid_name(nome)) {
-                    printf("invalid name\n");
-                    return;
-                }
-            }
-        }
-        else if (strspn(buf, "0123456789") == strlen(buf)) {
-            printf("%s: no such nif\n", buf);
-            return;
-        }
-        else {
-            if (!valid_name(buf)) {
-                printf("invalid name\n");
-                return;
-            }
-            strcpy(nome, buf);
-        }
-    }
+    if (!parse_client_info(nome, &nif))
+        return;
 
     calculate_totals(s, &items, &total);
 
-    Invoice *nv = smalloc(sizeof(Invoice));
-    nv->id = s->next_inv_id++;
-    nv->nif = nif;
-    nv->name = sstrdup(nome);
-    nv->items_count = items;
-    nv->total_cents = total;
+    Invoice *nv = create_invoice(s, nome, nif, items, total);
 
-    insert_invoice_sorted(s, nv);
-
-    printf("%d %.2f %d\n", items, total / 100.0, nv->id);
+    print_invoice(nv, items, total);
 
     clear_basket(s);
 }
@@ -433,55 +655,25 @@ void cmd_l(Sistema *s) {
     char tok[MAX_LINE];
     int c;
 
-    while ((c = getchar()) == ' ' || c == '\t') {}
+    while ((c = getchar()) == ' ' || c == '\t');
 
     if (c == '\n' || c == EOF) {
-        int found_any = 0;
-
-        for (Product *p = s->head_p; p; p = p->next) {
-            if (p->stock > 0) {
-                int qty = p->basket_qty;
-
-                printf("%s %c %.2f %d %d %s\n",
-                    p->ean, p->iva_code,
-                    p->price / 100.0,
-                    p->sold_qty + qty,
-                    p->stock,
-                    p->description);
-
-                found_any = 1;
-            }
-        }
-
-        if (!found_any) printf("*: no such product\n");
+        list_all_products(s);
         return;
     }
 
     ungetc(c, stdin);
 
     while (scanf("%s", tok) == 1) {
-        int found_any = 0;
 
-        for (Product *p = s->head_p; p; p = p->next) {
-            if (match_wild(tok, p->ean) && p->stock > 0) {
-                int qty = p->basket_qty;
-
-                printf("%s %c %.2f %d %d %s\n",
-                    p->ean, p->iva_code,
-                    p->price / 100.0,
-                    p->sold_qty + qty,
-                    p->stock,
-                    p->description);
-
-                found_any = 1;
-            }
-        }
-
-        if (!found_any) printf("%s: no such product\n", tok);
+        list_products_pattern(s, tok);
 
         while (isspace(c = getchar()) && c != '\n');
-        if (c == '\n' || c == EOF) break;
-        else ungetc(c, stdin);
+
+        if (c == '\n' || c == EOF)
+            break;
+        else
+            ungetc(c, stdin);
     }
 }
 
@@ -492,7 +684,7 @@ void cmd_d(Sistema *s) {
 
     if (scanf("%s", arg) != 1) return;
 
-    while ((c = getchar()) == ' ' || c == '\t') {}
+    while ((c = getchar()) == ' ' || c == '\t');
 
     if (c != '\n' && c != EOF) {
         ungetc(c, stdin);
@@ -500,47 +692,9 @@ void cmd_d(Sistema *s) {
         int qty;
         if (scanf("%d", &qty) != 1) return;
 
-        if (!is_ean_valid(arg)) { printf("invalid ean\n"); return; }
-
-        Product *p = find_product(s, arg);
-        if (!p) { printf("%s: no such product\n", arg); return; }
-
-        if (p->basket_qty > 0) { printf("product in use\n"); return; }
-
-        if (qty <= 0 || qty > p->stock) { printf("invalid quantity\n"); return; }
-
-        p->stock -= qty;
-
-        printf("%d %s\n", p->stock, p->description);
-
-        if (p->stock == 0) {
-            Product *prev = NULL, *cur = s->head_p;
-            while (cur && cur != p) { prev = cur; cur = cur->next; }
-            if (!prev) s->head_p = cur->next;
-            else prev->next = cur->next;
-            if (s->tail_p == cur) s->tail_p = prev;
-            free(cur->description);
-            free(cur);
-            s->num_p--;
-        }
+        handle_product_removal(s, arg, qty);
     } else {
-        int id = atoi(arg);
-
-        Invoice *prev = NULL, *cur = s->head_i;
-        while (cur && cur->id != id) { prev = cur; cur = cur->next; }
-
-        if (!cur) { printf("%d: no such invoice\n", id); return; }
-
-        printf("%.2f %ld %s\n",
-            cur->total_cents / 100.0,
-            cur->nif,
-            cur->name);
-
-        if (!prev) s->head_i = cur->next;
-        else prev->next = cur->next;
-
-        free(cur->name);
-        free(cur);
+        handle_invoice_removal(s, atoi(arg));
     }
 }
 

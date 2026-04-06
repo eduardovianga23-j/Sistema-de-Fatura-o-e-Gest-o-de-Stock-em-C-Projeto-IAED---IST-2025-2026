@@ -1,6 +1,9 @@
 #ifndef STRUCTS_H
 #define STRUCTS_H
 
+#ifndef MAX_LINE
+#define MAX_LINE 65536
+#endif
 /**
  * @file structs.h
  * @brief Header file containing the data structures used in the billing system.
@@ -73,5 +76,24 @@ typedef struct {
     int next_inv_id;
     int taxas[26];
 } Sistema;
+
+/**
+ * @struct CmdAinput
+ * @brief Represents the complete state of the billing system.
+ *
+ * Contains:
+ * - A linked list of products (with head and tail pointers)
+ * - The total number of products
+ * - A linked list representing the current shopping basket
+ * - A linked list of issued invoices
+ * - The next available invoice ID
+ * - An array of VAT rates indexed by letters (A–Z)
+ */
+
+typedef struct {
+    char ean[MAX_LINE];
+    int qty;
+    int show_only;
+} CmdAInput;
 
 #endif 
