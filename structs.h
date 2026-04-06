@@ -23,6 +23,7 @@ typedef struct Product {
     char iva_code;
     int stock;
     int sold_qty;
+    int basket_qty;   // 🔥 ADICIONA ESTA LINHA
     struct Product *next;
 } Product;
 
