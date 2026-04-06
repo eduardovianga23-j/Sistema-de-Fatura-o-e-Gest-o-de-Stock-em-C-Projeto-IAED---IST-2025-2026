@@ -1,3 +1,15 @@
+/**
+ * @file structs.h
+ * @brief Definição das estruturas de dados do sistema de faturação.
+ * Este ficheiro contém as estruturas principais utilizadas para gerir:
+ * - Produtos
+ * - Cesto de compras
+ * - Faturas
+ * - Estado global do sistema
+ * @author Eduardo João Vianga
+ * @date March 2025
+ */
+
 #ifndef STRUCTS_H
 #define STRUCTS_H
 
@@ -5,96 +17,72 @@
 #define MAX_LINE 65536
 #define MAX_PRODUCTS 10000
 #endif
-/**
- * @file structs.h
- * @brief Header file containing the data structures used in the billing system.
- * This module defines the core structures for managing products, the shopping
- * basket, invoices, and the overall system state. It is included by other
- * source files to share common type definitions.
- * @author Eduardo João Vianga, ist1119719
- * @date March 20, 2025
- */
 
 /**
  * @struct Product
- * @brief Represents a product in the billing system.
+ * @brief Representa um produto no sistema.
+ * Cada produto contém informação identificativa, fiscal e de stock.
  */
-
 typedef struct Product {
-    char ean[14];
-    char *description;
-    long price;
-    char iva_code;
-    int stock;
-    int sold_qty;
-    int basket_qty;   // 🔥 ADICIONA ESTA LINHA
-    struct Product *next;
+    char ean[14];          
+    char *description;     
+    long price;            
+    char iva_code;         
+    int stock;           
+    int sold_qty;          
+    int basket_qty;        
+    struct Product *next;  
 } Product;
 
 /**
  * @struct BasketItem
- * @brief Represents an item in the shopping basket.
+ * @brief Representa um item no cesto de compras.
+ * Cada item referencia um produto e a quantidade adicionada.
  */
-
 typedef struct BasketItem {
-    Product *product;   
-    int quantity;
-    struct BasketItem *next;
+    Product *product;      
+    int quantity;         
+    struct BasketItem *next; 
 } BasketItem;
 
 /**
  * @struct Invoice
- * @brief Represents an invoice in the billing system.
+ * @brief Representa uma fatura emitida.
+ * Guarda informação do cliente e totais da compra.
  */
-
 typedef struct Invoice {
-    int id;
-    long nif;
-    char *name;
-    int items_count;
-    long total_cents;
-    struct Invoice *next;
+    int id;                
+    long nif;              
+    char *name;            
+    int items_count;       
+    long total_cents;   
+    struct Invoice *next;  
 } Invoice;
 
 /**
  * @struct Sistema
- * @brief Represents the complete state of the billing system.
- *
- * Contains:
- * - A linked list of products (with head and tail pointers)
- * - The total number of products
- * - A linked list representing the current shopping basket
- * - A linked list of issued invoices
- * - The next available invoice ID
- * - An array of VAT rates indexed by letters (A–Z)
+ * @brief Estado global do sistema de faturação.
+ * Centraliza todas as estruturas dinâmicas e dados do sistema.
  */
-
 typedef struct {
-    Product *head_p, *tail_p;
-    int num_p;
-    BasketItem *head_b;
-    Invoice *head_i;
-    int next_inv_id;
-    int taxas[26];
+    Product *head_p;       
+    Product *tail_p;       
+    int num_p;            
+    BasketItem *head_b;   
+    Invoice *head_i;       
+    int next_inv_id;     
+    int taxas[26];    
 } Sistema;
 
 /**
- * @struct CmdAinput
- * @brief Represents the complete state of the billing system.
- *
- * Contains:
- * - A linked list of products (with head and tail pointers)
- * - The total number of products
- * - A linked list representing the current shopping basket
- * - A linked list of issued invoices
- * - The next available invoice ID
- * - An array of VAT rates indexed by letters (A–Z)
+ * @struct CmdAInput
+ * @brief Estrutura auxiliar para o comando 'a' (adicionar ao cesto).
+ * Utilizada para armazenar os parâmetros lidos do input.
  */
-
 typedef struct {
-    char ean[MAX_LINE];
-    int qty;
-    int show_only;
+    char ean[MAX_LINE];    
+    int qty;              
+    int show_only;        
 } CmdAInput;
 
-#endif 
+#endif

@@ -1,3 +1,14 @@
+/**
+ * @file commands.c
+ * @brief Implementação dos comandos do sistema de faturação.
+ * Este módulo processa todos os comandos introduzidos pelo utilizador:
+ * - Gestão de produtos (p, l, d)
+ * - Gestão do cesto (a, r)
+ * - Faturação (f, c)
+ * Inclui também funções auxiliares para parsing, validação e manipulação
+ * de estruturas internas do sistema.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +21,15 @@
 #include "basket.h"
 #include "invoice.h"
 
+/**
+ * @brief Faz parsing do comando 'a' (adicionar ao cesto).
+ * Permite dois formatos:
+ * - <ean>
+ * - <qty> <ean>
+ * Se não houver argumentos, ativa modo de visualização do cesto.
+ * @param in Estrutura onde guardar os dados lidos
+ * @return 1 em sucesso, 0 em erro
+ */
 
 int parse_cmd_a(CmdAInput *in) {
     char buf[MAX_LINE];
@@ -47,6 +67,19 @@ int parse_cmd_a(CmdAInput *in) {
 
     return 1;
 }
+
+/**
+ * @brief Atualiza o cesto de compras.
+ * - qty > 0 → adiciona produto ao cesto
+ * - qty < 0 → remove produto do cesto
+ * Garante consistência entre:
+ * - stock do produto
+ * - quantidade no cesto
+ * @param s Sistema
+ * @param p Produto
+ * @param qty Quantidade a adicionar/remover
+ * @return 1 em sucesso, 0 em erro
+ */
 
 int update_basket(Sistema *s, Product *p, int qty) {
 
@@ -88,6 +121,19 @@ int update_basket(Sistema *s, Product *p, int qty) {
     return 1;
 }
 
+/**
+ * @brief Processa token de cliente (nome ou NIF).
+ * Determina se o input corresponde a:
+ * - Nome (com ou sem aspas)
+ * - NIF válido
+ * Atualiza os valores de nome e NIF conforme necessário.
+ * @param buf Token lido
+ * @param quoted Indica se estava entre aspas
+ * @param nome Nome do cliente (output)
+ * @param nif NIF do cliente (output)
+ * @return 1 em sucesso, 0 em erro
+ */
+
 int handle_client_token(char *buf, int quoted, char *nome, long *nif) {
 
     if (quoted) {
@@ -128,6 +174,17 @@ int handle_client_token(char *buf, int quoted, char *nome, long *nif) {
     return 1;
 }
 
+/**
+ * @brief Faz parsing da informação do cliente.
+ * Define valores por defeito:
+ * - Nome: "Cliente final"
+ * - NIF: 999999999
+ * Se houver input, processa nome ou NIF.
+ * @param nome Nome do cliente (output)
+ * @param nif NIF do cliente (output)
+ * @return 1 em sucesso, 0 em erro
+ */
+
 int parse_client_info(char *nome, long *nif) {
     char buf[MAX_LINE];
     int c, quoted;
@@ -149,6 +206,17 @@ int parse_client_info(char *nome, long *nif) {
 
     return handle_client_token(buf, quoted, nome, nif);
 }
+
+/**
+ * @brief Remove quantidade de um produto do sistema.
+ * - Valida EAN
+ * - Verifica existência
+ * - Garante que não está no cesto
+ * - Remove produto se stock chegar a 0
+ * @param s Sistema
+ * @param ean Código EAN
+ * @param qty Quantidade a remover
+ */
 
 void handle_product_removal(Sistema *s, char *ean, int qty) {
 
@@ -199,6 +267,12 @@ void handle_product_removal(Sistema *s, char *ean, int qty) {
     }
 }
 
+/**
+ * @brief Remove uma fatura pelo ID.
+ * Imprime os dados da fatura antes de remover.
+ * @param s Sistema
+ * @param id Identificador da fatura
+ */
 
 void handle_invoice_removal(Sistema *s, int id) {
 
@@ -226,6 +300,17 @@ void handle_invoice_removal(Sistema *s, int id) {
     free(cur);
 }
 
+/**
+ * @brief Imprime informação de um produto.
+ * Inclui:
+ * - EAN
+ * - IVA
+ * - Preço
+ * - Quantidade total (vendido + cesto)
+ * - Stock
+ * - Descrição
+ * @param p Produto
+ */
 void print_product_line(Product *p) {
     int qty = p->basket_qty;
 
@@ -237,6 +322,13 @@ void print_product_line(Product *p) {
         p->stock,
         p->description);
 }
+
+/**
+ * @brief Lista todos os produtos com stock disponível.
+ * Imprime todos os produtos cujo stock é maior que zero.
+ * Caso não existam, imprime mensagem de erro.
+ * @param s Sistema
+ */
 
 void list_all_products(Sistema *s) {
     int found_any = 0;
@@ -252,6 +344,13 @@ void list_all_products(Sistema *s) {
         printf("*: no such product\n");
 }
 
+/**
+ * @brief Lista produtos que correspondem a um padrão wildcard.
+ * Utiliza correspondência com '*' e '?' sobre o EAN.
+ * @param s Sistema
+ * @param tok Padrão de pesquisa
+ */
+
 void list_products_pattern(Sistema *s, char *tok) {
     int found_any = 0;
 
@@ -265,6 +364,16 @@ void list_products_pattern(Sistema *s, char *tok) {
     if (!found_any)
         printf("%s: no such product\n", tok);
 }
+
+/**
+ * @brief Valida dados do comando 'a'.
+ * - Verifica se o EAN é válido
+ * - Verifica se o produto existe
+ * @param s Sistema
+ * @param in Input do comando
+ * @param p Produto encontrado (output)
+ * @return 1 em sucesso, 0 em erro
+ */
 
 int validate_cmd_a(Sistema *s, CmdAInput *in, Product **p) {
 
@@ -283,6 +392,18 @@ int validate_cmd_a(Sistema *s, CmdAInput *in, Product **p) {
     return 1;
 }
 
+/**
+ * @brief Imprime resultado do comando 'a'.
+ * Mostra:
+ * - IVA
+ * - Preço
+ * - Quantidade no cesto
+ * - Total com IVA
+ * - Descrição
+ * @param p Produto
+ * @param s Sistema
+ */
+
 void print_cmd_a(Product *p, Sistema *s) {
     int total = p->basket_qty;
 
@@ -298,7 +419,14 @@ void print_cmd_a(Product *p, Sistema *s) {
 
 /* ================= COMANDOS ================= */
 
-/** @brief Comando p */
+/**
+ * @brief Comando 'a' - Adiciona ou remove produtos do cesto.
+ * - Permite adicionar/remover quantidades
+ * - Pode listar o cesto (sem argumentos)
+ * - Atualiza stock e cesto de forma consistente
+ * @param s Sistema
+ */
+
 void cmd_p(Sistema *s) {
     char ean[MAX_LINE], iva, desc[MAX_LINE], price_str[32];
     int qty;
@@ -306,7 +434,7 @@ void cmd_p(Sistema *s) {
     if (scanf("%s %c %s %d", ean, &iva, price_str, &qty) != 4) return;
     if (scanf(" %65535[^\n]", desc) != 1) desc[0] = '\0';
 
-    long long price = convert_str_centimos(price_str);
+    long long price = parse_price_to_cents(price_str);
 
     if (!is_ean_valid(ean)) { printf("invalid ean\n"); return; }
     if (iva < 'A' || iva > 'Z' || s->taxas[iva - 'A'] == -1) { printf("invalid iva\n"); return; }
@@ -346,7 +474,14 @@ void cmd_p(Sistema *s) {
     printf("%d\n", p->stock);
 }
 
-/** @brief Comando a */
+/**
+ * @brief Comando 'a' - Adiciona ou remove produtos do cesto.
+ * - Permite adicionar/remover quantidades
+ * - Pode listar o cesto (sem argumentos)
+ * - Atualiza stock e cesto de forma consistente
+ * @param s Sistema
+ */
+
 void cmd_a(Sistema *s) {
     CmdAInput in;
     Product *p;
@@ -365,7 +500,15 @@ void cmd_a(Sistema *s) {
     print_cmd_a(p, s);
 }
 
-/** @brief Comando f */
+/**
+ * @brief Comando 'f' - Finaliza compra e gera fatura.
+ * - Processa dados do cliente
+ * - Calcula totais
+ * - Cria fatura
+ * - Limpa o cesto
+ * @param s Sistema
+ */
+
 void cmd_f(Sistema *s) {
     char nome[MAX_LINE];
     long nif;
@@ -432,7 +575,12 @@ void cmd_d(Sistema *s) {
     }
 }
 
-/** @brief Comando r */
+/**
+ * @brief Comando 'r' - Consulta estatísticas ou produto.
+ * - Sem argumentos: mostra resumo global do sistema
+ * - Com EAN: mostra informação de um produto
+ * @param s Sistema
+ */
 void cmd_r(Sistema *s) {
     char ean[MAX_LINE];
     int c;
