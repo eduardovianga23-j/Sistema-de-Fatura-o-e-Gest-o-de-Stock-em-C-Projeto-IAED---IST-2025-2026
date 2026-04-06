@@ -77,6 +77,11 @@ int read_name_or_token(char *buffer, int *is_quoted) {
     return 1;
 }
 
+static long round_to_cents(double x) {
+    double y = x * 100.0;
+    return (long)(y + 0.5 + 1e-9);
+}
+
 /* ================= AUX ================= */
 
 Product* find_product(Sistema *s, const char *ean) {
@@ -155,9 +160,9 @@ int is_ean_valid(const char *e) {
 }
 
 long calc_total_iva(long price, int qty, int tax) {
-    long long base = (long long)price * qty;
-    long long total = base * (100 + tax);
-    return (long)((total + 50) / 100);
+    double preco = price / 100.0;              // euros
+    double total = preco * qty * (1 + tax / 100.0);
+    return round_to_cents(total);              // volta para cêntimos
 }
 
 int valid_description(const char *d) {
