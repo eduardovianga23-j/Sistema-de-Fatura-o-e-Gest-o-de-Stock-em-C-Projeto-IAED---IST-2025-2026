@@ -3,7 +3,6 @@
  * @file proj.c
  * @brief Sistema de faturação com gestão de produtos, cesto e faturas.
  * Mantém a lógica original e melhora modularidade/complexidade.
- *
  * @author Eduardo João Vianga
  * @date March 2025
  */
