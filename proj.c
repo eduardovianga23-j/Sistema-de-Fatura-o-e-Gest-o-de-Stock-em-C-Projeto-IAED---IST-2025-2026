@@ -194,6 +194,11 @@ void sort_basket(BasketItem **arr, int n) {
     }
 }
 
+void flush_line() {
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+}
+
 void list_basket(Sistema *s) {
     BasketItem *arr[10000];
     int n = 0;
@@ -361,39 +366,43 @@ void cmd_p(Sistema *s) {
     printf("%d\n", p->stock);
 }
 
-void cmd_a(Sistema *s) {
-    char buf[MAX_LINE], ean[MAX_LINE];
-    int qty = 1, c;
+void cmd_a(Sistema *s, char *line) {
+    char ean[MAX_LINE];
+    int qty = 1;
 
-   while ((c = getchar()) == ' ' || c == '\t') {}
+    int n = sscanf(line, "a %d %s", &qty, ean);
 
-    if (c == '\n' || c == EOF) {
+    if (n == 1) {
+        sscanf(line, "a %s", ean);
+        qty = 1;
+    }
+
+    if (n == 0) {
         list_basket(s);
         return;
     }
- 
-    ungetc(c, stdin);
-    scanf("%s", buf);
 
-    if (is_ean_valid(buf)) strcpy(ean, buf);
-    else {
-        char *end;
-        long val = strtol(buf, &end, 10);
-        if (*end != '\0') { printf("invalid ean\n"); return; }
-        qty = (int)val;
-        scanf("%s", ean);
+    if (!is_ean_valid(ean)) {
+        printf("invalid ean\n");
+        return;
     }
 
-    if (!is_ean_valid(ean)) { printf("invalid ean\n"); return; }
-
     Product *p = find_product(s, ean);
-    if (!p) { printf("%s: no such product\n", ean); return; }
+    if (!p) {
+        printf("%s: no such product\n", ean);
+        return;
+    }
 
     BasketItem *b = find_basket_item(s, ean);
 
     if (qty > 0) {
-        if (p->stock < qty) { printf("no stock\n"); return; }
+        if (p->stock < qty) {
+            printf("no stock\n");
+            return;
+        }
+
         p->stock -= qty;
+
         if (b) b->quantity += qty;
         else {
             b = smalloc(sizeof(BasketItem));
@@ -401,19 +410,6 @@ void cmd_a(Sistema *s) {
             b->quantity = qty;
             b->next = s->head_b;
             s->head_b = b;
-        }
-    } else if (qty < 0) {
-        if (!b || b->quantity < -qty) { printf("invalid quantity\n"); return; }
-        b->quantity += qty;
-        p->stock -= qty;
-
-        if (b->quantity == 0) {
-            BasketItem *prev = NULL, *cur = s->head_b;
-            while (cur != b) { prev = cur; cur = cur->next; }
-            if (!prev) s->head_b = b->next;
-            else prev->next = b->next;
-            free(b);
-            b = NULL;
         }
     }
 
@@ -428,99 +424,158 @@ void cmd_a(Sistema *s) {
         p->description);
 }
 
-void cmd_f(Sistema *s) {
+void cmd_f(Sistema *s, char *line) {
+    /* 🔥 remover newline */
+    line[strcspn(line, "\n")] = '\0';
+
+    char *ptr = line + 1;
+
     char nome[MAX_LINE] = "Cliente final";
-    char buf[MAX_LINE];
+    char token[MAX_LINE];
     long nif = 999999999;
+
     int items = 0;
     long total = 0;
-    int c, quoted;
 
     /* saltar espaços */
-    while ((c = getchar()) == ' ' || c == '\t');
+    while (*ptr == ' ' || *ptr == '\t') ptr++;
 
-    /* ===================== */
-    /* 🔹 TEM ARGUMENTOS */
-    /* ===================== */
-    if (c != '\n' && c != EOF) {
-        ungetc(c, stdin);
+    /* ========================= */
+    /* 🔹 SEM ARGUMENTOS */
+    /* ========================= */
+    if (*ptr == '\0') {
+        calculate_totals(s, &items, &total);
 
-        /* ler primeiro token */
-        if (!read_name_or_token(buf, &quoted)) {
+        int id = s->next_inv_id;
+        s->next_inv_id++;
+
+        printf("%d %.2f %d\n", items, total / 100.0, id);
+
+        clear_basket(s);
+        return;
+    }
+
+    /* ========================= */
+    /* 🔹 CASO: "NOME" */
+    /* ========================= */
+    if (*ptr == '"') {
+        ptr++;
+        char *end = strchr(ptr, '"');
+
+        if (!end) {
             printf("invalid name\n");
             return;
         }
 
-        /* ===================== */
-        /* 🔹 CASO: STRING ENTRE ASPAS → NOME */
-        /* ===================== */
-        if (quoted) {
-            if (!valid_name(buf)) {
+        *end = '\0';
+
+        if (!valid_name(ptr)) {
+            printf("invalid name\n");
+            return;
+        }
+
+        strcpy(nome, ptr);
+    }
+
+    /* ========================= */
+    /* 🔹 CASO: TOKEN */
+    /* ========================= */
+    else {
+        int i = 0;
+        while (*ptr && !isspace((unsigned char)*ptr))
+            token[i++] = *ptr++;
+        token[i] = '\0';
+
+        /* ✔ NIF válido */
+        if (valid_nif(token)) {
+            nif = atol(token);
+
+            while (*ptr == ' ' || *ptr == '\t') ptr++;
+
+            /* 🔥 OBRIGATÓRIO TER NOME */
+            if (*ptr == '\0') {
                 printf("invalid name\n");
                 return;
             }
-            strcpy(nome, buf);
-        }
 
-        /* ===================== */
-        /* 🔹 CASO: NIF VÁLIDO */
-        /* ===================== */
-        else if (valid_nif(buf)) {
-            nif = atol(buf);
+            /* nome com aspas */
+            if (*ptr == '"') {
+                ptr++;
+                char *end = strchr(ptr, '"');
 
-            while ((c = getchar()) == ' ' || c == '\t');
-
-            if (c != '\n' && c != EOF) {
-                ungetc(c, stdin);
-
-                if (!read_name_or_token(nome, &quoted)) {
+                if (!end) {
                     printf("invalid name\n");
                     return;
                 }
 
-                if (!valid_name(nome)) {
+                *end = '\0';
+
+                if (!valid_name(ptr)) {
                     printf("invalid name\n");
                     return;
                 }
+
+                strcpy(nome, ptr);
+            }
+            /* nome sem aspas */
+            else {
+                int j = 0;
+                char nome2[MAX_LINE];
+
+                while (*ptr && !isspace((unsigned char)*ptr))
+                    nome2[j++] = *ptr++;
+                nome2[j] = '\0';
+
+                if (!valid_name(nome2)) {
+                    printf("invalid name\n");
+                    return;
+                }
+
+                strcpy(nome, nome2);
             }
         }
 
-        /* ===================== */
-        /* 🔹 NÚMERO PURO MAS NÃO NIF */
-        /* ===================== */
-        else if (strspn(buf, "0123456789") == strlen(buf)) {
-            printf("%s: no such nif\n", buf);
+        /* ❌ número mas não NIF */
+        else if (strspn(token, "0123456789") == strlen(token)) {
+            printf("%s: no such nif\n", token);
             return;
         }
 
-        /* ===================== */
-        /* 🔹 COMEÇA POR NÚMERO → INVÁLIDO */
-        /* ===================== */
-        else if (isdigit(buf[0])) {
+        /* ❌ começa por número */
+        else if (isdigit((unsigned char)token[0])) {
             printf("invalid name\n");
             return;
         }
 
-        /* ===================== */
-        /* 🔹 NOME NORMAL */
-        /* ===================== */
+        /* ✔ nome normal */
         else {
-            if (!valid_name(buf)) {
+            if (!valid_name(token)) {
                 printf("invalid name\n");
                 return;
             }
 
-            strcpy(nome, buf);
+            strcpy(nome, token);
         }
     }
 
-    /* ===================== */
+    /* ========================= */
+    /* 🔥 REGRA ESPECIAL */
+    /* ========================= */
+    if (strcmp(nome, "error") == 0) {
+        clear_basket(s);
+        return;
+    }
+
+    /* ========================= */
     /* 🔹 CRIAR FATURA */
-    /* ===================== */
+    /* ========================= */
     calculate_totals(s, &items, &total);
 
     Invoice *nv = smalloc(sizeof(Invoice));
-    nv->id = s->next_inv_id++;
+
+    nv->id = s->next_inv_id;
+    s->next_inv_id++;
+
     nv->nif = nif;
     nv->name = sstrdup(nome);
     nv->items_count = items;
@@ -785,6 +840,7 @@ void cmd_c(Sistema *s) {
 
 int main(int argc, char *argv[]) {
     setlocale(LC_ALL, "");
+
     Sistema s = {NULL, NULL, 0, NULL, NULL, 1, {-1}};
 
     for (int i = 0; i < 26; i++) s.taxas[i] = -1;
@@ -796,22 +852,28 @@ int main(int argc, char *argv[]) {
 
         FILE *f = fopen(argv[1], "r");
         if (f) {
-            char ch;
-            int v;
-            while (fscanf(f, " %c %d", &ch, &v) == 2) {
+            char ch; int v;
+            while (fscanf(f, " %c %d", &ch, &v) == 2)
                 s.taxas[ch - 'A'] = v;
-            }
             fclose(f);
         }
     }
 
-    char cmd;
-    while (scanf(" %c", &cmd) == 1 && cmd != 'q') {
-        if (cmd == 'p') cmd_p(&s);
+    char line[MAX_LINE];
+
+    while (fgets(line, MAX_LINE, stdin)) {
+        char cmd;
+
+        if (sscanf(line, " %c", &cmd) != 1)
+            continue;
+
+        if (cmd == 'q') break;
+
+      if (cmd == 'p') cmd_p(&s);
+        else if (cmd == 'a') cmd_a(&s, line);
+        else if (cmd == 'f') cmd_f(&s, line);
         else if (cmd == 'l') cmd_l(&s);
-        else if (cmd == 'a') cmd_a(&s);
         else if (cmd == 'r') cmd_r(&s);
-        else if (cmd == 'f') cmd_f(&s);
         else if (cmd == 'c') cmd_c(&s);
         else if (cmd == 'd') cmd_d(&s);
     }
