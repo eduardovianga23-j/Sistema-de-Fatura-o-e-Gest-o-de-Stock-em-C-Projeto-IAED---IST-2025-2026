@@ -179,39 +179,34 @@ int valid_description(const char *d) {
 
 /* ================= BASKET ================= */
 
-void sort_basket(BasketItem **arr, int n) {
-    for (int i = 0; i < n - 1; i++) {
-        int swapped = 0;
-        for (int j = 0; j < n - i - 1; j++) {
-            if (strcmp(arr[j]->ean, arr[j + 1]->ean) > 0) {
-                BasketItem *t = arr[j];
-                arr[j] = arr[j + 1];
-                arr[j + 1] = t;
-                swapped = 1;
-            }
-        }
-        if (!swapped) break;
+void insert_basket_sorted(Sistema *s, BasketItem *new_item) {
+    BasketItem *curr = s->head_b;
+    BasketItem *prev = NULL;
+
+    while (curr && strcmp(curr->ean, new_item->ean) < 0) {
+        prev = curr;
+        curr = curr->next;
     }
+
+    new_item->next = curr;
+
+    if (!prev)
+        s->head_b = new_item;
+    else
+        prev->next = new_item;
 }
 
 void list_basket(Sistema *s) {
-    BasketItem *arr[10000];
-    int n = 0;
+    for (BasketItem *b = s->head_b; b; b = b->next) {
+        if (b->quantity <= 0) continue;
 
-    for (BasketItem *b = s->head_b; b; b = b->next)
-        if (b->quantity > 0)
-            arr[n++] = b;
-
-    sort_basket(arr, n);
-
-    for (int i = 0; i < n; i++) {
-        Product *p = find_product(s, arr[i]->ean);
+        Product *p = find_product(s, b->ean);
         if (p) {
             printf("%c %.2f %d %.2f %s\n",
                 p->iva_code,
                 p->price / 100.0,
-                arr[i]->quantity,
-                calc_total_iva(p->price, arr[i]->quantity,
+                b->quantity,
+                calc_total_iva(p->price, b->quantity,
                     s->taxas[p->iva_code - 'A']) / 100.0,
                 p->description);
         }
@@ -399,8 +394,8 @@ void cmd_a(Sistema *s) {
             b = smalloc(sizeof(BasketItem));
             strcpy(b->ean, ean);
             b->quantity = qty;
-            b->next = s->head_b;
-            s->head_b = b;
+            b->next = NULL;
+            insert_basket_sorted(s, b);
         }
     } else if (qty < 0) {
         if (!b || b->quantity < -qty) { printf("invalid quantity\n"); return; }
