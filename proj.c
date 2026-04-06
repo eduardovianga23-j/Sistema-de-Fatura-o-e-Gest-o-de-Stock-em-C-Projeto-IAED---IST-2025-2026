@@ -125,9 +125,12 @@ int valid_name(const char *name) {
     if (!name || !isalpha((unsigned char)name[0]))
         return 0;
 
-    for (int i = 0; name[i]; i++)
-        if (!isprint((unsigned char)name[i]))
+    for (int i = 0; name[i]; i++) {
+        unsigned char c = (unsigned char)name[i];
+
+        if (!(isalpha(c) || isdigit(c) || c == ' '))
             return 0;
+    }
 
     return 1;
 }
@@ -467,12 +470,8 @@ void cmd_f(Sistema *s) {
         /* 🔹 CASO: STRING ENTRE ASPAS → NOME */
         /* ===================== */
         if (quoted) {
-            if (!valid_name(buf)) {
-                printf("invalid name\n");
-                return;
-            }
-            strcpy(nome, buf);
-        }
+        strcpy(nome, buf); 
+         }
 
         /* ===================== */
         /* 🔹 CASO: NIF VÁLIDO */
