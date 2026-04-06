@@ -56,14 +56,16 @@ int read_name_or_token(char *buffer, int *is_quoted) {
         *is_quoted = 1;
 
         while ((c = getchar()) != '"' && c != '\n' && c != EOF) {
-            buffer[i++] = (char)c;
+            if (i < MAX_LINE - 1)
+                buffer[i++] = (char)c;
         }
 
         if (c != '"') return 0;
     } 
     else {
         while (c != EOF && c != '\n' && c != ' ' && c != '\t') {
-            buffer[i++] = (char)c;
+            if (i < MAX_LINE - 1)
+                buffer[i++] = (char)c;
             c = getchar();
         }
 
@@ -85,7 +87,8 @@ Product* find_product(Sistema *s, const char *ean) {
 
 BasketItem* find_basket_item(Sistema *s, const char *ean) {
     for (BasketItem *b = s->head_b; b; b = b->next)
-        if (!strcmp(b->ean, ean)) return b;
+        if (!strcmp(b->product->ean, ean))
+            return b;
     return NULL;
 }
 
@@ -139,7 +142,7 @@ int valid_nif(const char *s) {
 int basket_quantity(Sistema *s, const char *ean) {
     int q = 0;
     for (BasketItem *b = s->head_b; b; b = b->next)
-        if (!strcmp(b->ean, ean)) q += b->quantity;
+        if (!strcmp(b->product->ean, ean)) q += b->quantity;
     return q;
 }
 
@@ -183,7 +186,7 @@ void insert_basket_sorted(Sistema *s, BasketItem *new_item) {
     BasketItem *curr = s->head_b;
     BasketItem *prev = NULL;
 
-    while (curr && strcmp(curr->ean, new_item->ean) < 0) {
+    while (curr && strcmp(curr->product->ean, new_item->product->ean) < 0) {
         prev = curr;
         curr = curr->next;
     }
@@ -200,7 +203,7 @@ void list_basket(Sistema *s) {
     for (BasketItem *b = s->head_b; b; b = b->next) {
         if (b->quantity <= 0) continue;
 
-        Product *p = find_product(s, b->ean);
+        Product *p = b->product;
         if (p) {
             printf("%c %.2f %d %.2f %s\n",
                 p->iva_code,
@@ -223,7 +226,7 @@ void clear_basket(Sistema *s) {
 
 void calculate_totals(Sistema *s, int *items, long *total) {
     for (BasketItem *b = s->head_b; b; b = b->next) {
-        Product *p = find_product(s, b->ean);
+        Product *p = b->product;
         if (p && b->quantity > 0) {
             p->sold_qty += b->quantity;
             *items += b->quantity;
@@ -246,7 +249,7 @@ long long convert_str_centimos(const char *preco) {
     euros = atoll(preco);
 
     char cent_str[10];
-    strncpy(cent_str, dot + 1, 3); /* até 3 dígitos */
+    strncpy(cent_str, dot + 1, 3);
     cent_str[3] = '\0';
 
     int len = strlen(cent_str);
@@ -282,7 +285,7 @@ void cmd_p(Sistema *s) {
     if (scanf("%s %c %s %d", ean, &iva, price_str, &qty) != 4)
         return;
 
-    if (scanf(" %[^\n]", desc) != 1)
+    if (scanf(" %65535[^\n]", desc) != 1)
         desc[0] = '\0';
 
     long long price = convert_str_centimos(price_str);
@@ -370,14 +373,16 @@ void cmd_a(Sistema *s) {
     ungetc(c, stdin);
     scanf("%s", buf);
 
-    if (is_ean_valid(buf)) strcpy(ean, buf);
-    else {
-        char *end;
-        long val = strtol(buf, &end, 10);
-        if (*end != '\0') { printf("invalid ean\n"); return; }
-        qty = (int)val;
-        scanf("%s", ean);
-    }
+  if (is_ean_valid(buf)) {
+    strcpy(ean, buf);
+}
+else {
+    char *end;
+    long val = strtol(buf, &end, 10);
+    if (*end != '\0') { printf("invalid ean\n"); return; }
+    qty = (int)val;
+    if (scanf("%s", ean) != 1) return;
+}
 
     if (!is_ean_valid(ean)) { printf("invalid ean\n"); return; }
 
@@ -391,8 +396,8 @@ void cmd_a(Sistema *s) {
         p->stock -= qty;
         if (b) b->quantity += qty;
         else {
-            b = smalloc(sizeof(BasketItem));
-            strcpy(b->ean, ean);
+           b = smalloc(sizeof(BasketItem));
+            b->product = p;
             b->quantity = qty;
             b->next = NULL;
             insert_basket_sorted(s, b);
@@ -400,7 +405,7 @@ void cmd_a(Sistema *s) {
     } else if (qty < 0) {
         if (!b || b->quantity < -qty) { printf("invalid quantity\n"); return; }
         b->quantity += qty;
-        p->stock -= qty;
+        p->stock += -qty;
 
         if (b->quantity == 0) {
             BasketItem *prev = NULL, *cur = s->head_b;
@@ -565,7 +570,7 @@ void cmd_l(Sistema *s) {
             }
         }
 
-        /* ⚠️ IMPORTANTE: só aqui imprime "*" */
+        /* IMPORTANTE: só aqui imprime "*" */
         if (!found_any) {
             printf("*: no such product\n");
         }
@@ -634,7 +639,7 @@ void cmd_d(Sistema *s) {
         }
 
         for (BasketItem *b = s->head_b; b; b = b->next) {
-            if (!strcmp(b->ean, arg) && b->quantity > 0) {
+            if (!strcmp(b->product->ean, arg) && b->quantity > 0) {
                 printf("product in use\n");
                 return;
             }
@@ -759,23 +764,33 @@ void cmd_r(Sistema *s) {
 }
 
 void cmd_c(Sistema *s) {
-    char nome[MAX_LINE]; int c, fnd = 0;
+    char nome[MAX_LINE];
+    int c, fnd = 0, quoted;
+
     while ((c = getchar()) == ' ' || c == '\t') {}
 
     if (c == '\n' || c == EOF) {
         for (Invoice *i = s->head_i; i; i = i->next)
-            printf("%d %.2f %s\n", i->id, i->total_cents/100.0, i->name);
-    } else {
-    int quoted;
-    ungetc(c, stdin);
-    read_name_or_token(nome, &quoted);
-    for (Invoice *i = s->head_i; i; i = i->next)
-            if (!strcmp(i->name, nome)) {
-                printf("%d %.2f %s\n", i->id, i->total_cents/100.0, i->name);
-                fnd = 1;
-            }
-        if (!fnd) printf("%s: no such client\n", nome);
+            printf("%d %.2f %s\n", i->id, i->total_cents / 100.0, i->name);
+        return;
     }
+
+    ungetc(c, stdin);
+
+    if (!read_name_or_token(nome, &quoted) || !valid_name(nome)) {
+        printf("invalid name\n");
+        return;
+    }
+
+    for (Invoice *i = s->head_i; i; i = i->next) {
+        if (!strcmp(i->name, nome)) {
+            printf("%d %.2f %s\n", i->id, i->total_cents / 100.0, i->name);
+            fnd = 1;
+        }
+    }
+
+    if (!fnd)
+        printf("%s: no such client\n", nome);
 }
 
 int main(int argc, char *argv[]) {
