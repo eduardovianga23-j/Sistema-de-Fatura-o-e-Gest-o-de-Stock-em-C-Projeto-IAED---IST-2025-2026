@@ -3,6 +3,7 @@
 
 #ifndef MAX_LINE
 #define MAX_LINE 65536
+#define MAX_PRODUCTS 10000
 #endif
 /**
  * @file structs.h
