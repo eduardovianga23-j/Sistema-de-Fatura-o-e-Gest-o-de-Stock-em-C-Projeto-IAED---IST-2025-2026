@@ -160,15 +160,8 @@ int is_ean_valid(const char *e) {
 
 long calc_total_iva(long price, int qty, int tax) {
     double preco = price / 100.0;
-
-    /* preço com IVA por unidade */
-    double unit = preco * (1 + tax / 100.0);
-
-    /* arredondar a unidade */
-    long unit_cents = round_to_cents(unit);
-
-    /* depois multiplicar */
-    return unit_cents * qty;
+    double total = preco * qty * (1 + tax / 100.0);
+    return round_to_cents(total);
 }
 
 int valid_description(const char *d) {
