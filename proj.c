@@ -8,7 +8,7 @@
  * @author Eduardo João Vianga
  * @date Março 2025
  */
-
+cd 
 #include <stdio.h>
 #include <locale.h>
 #include <stdlib.h>
@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
                 s.taxas[ch - 'A'] = v;
 
             fclose(f);
-        }
+        } 
     } else {
         /* Taxas por defeito */
         s.taxas[0] = 0;    /* A */

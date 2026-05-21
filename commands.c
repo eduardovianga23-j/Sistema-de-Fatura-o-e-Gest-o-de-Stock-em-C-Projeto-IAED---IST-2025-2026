@@ -31,6 +31,17 @@
  * @return 1 em sucesso, 0 em erro
  */
 
+ int has_invalid_desc_chars(char *desc) {
+    for (int i = 0; desc[i]; i++) {
+        if (desc[i] == '(' || desc[i] == ')' ||
+            desc[i] == '[' || desc[i] == ']' ||
+            desc[i] == '{' || desc[i] == '}') {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 int parse_cmd_a(CmdAInput *in) {
     char buf[MAX_LINE];
     int c;
@@ -440,8 +451,15 @@ void cmd_p(Sistema *s) {
     if (iva < 'A' || iva > 'Z' || s->taxas[iva - 'A'] == -1) { printf("invalid iva\n"); return; }
     if (price <= 0) { printf("invalid price\n"); return; }
     if (qty < 0) { printf("invalid quantity\n"); return; }
-    if (!valid_description(desc)) { printf("invalid description\n"); return; }
+    if (has_invalid_desc_chars(desc)) {
+    printf("invalid character in description\n"); //Nova alteração do teste prático
+    return;
+    }
 
+    if (!valid_description(desc)) {
+        printf("invalid description\n");
+        return;
+    }
     Product *p = find_product(s, ean);
 
     if (p) {
@@ -649,7 +667,7 @@ void cmd_c(Sistema *s) {
     }
 
     for (Invoice *i = s->head_i; i; i = i->next) {
-        if (!strcmp(i->name, nome)) {
+        if (strncmp(i->name, nome, strlen(nome)) == 0) { // Nova alteração do teste prático
             printf("%d %.2f %s\n", i->id, i->total_cents / 100.0, i->name);
             fnd = 1;
         }
