@@ -1,0 +1,27 @@
+name: CI - Build & Test
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build:
+    name: Compilar Projeto
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Instalar GCC
+        run: sudo apt-get update && sudo apt-get install -y gcc valgrind
+      - name: Compilar
+        run: gcc -O3 -Wall -Wextra -Werror -Wno-unused-result -o proj *.c
+
+  docker:
+    name: Build Docker
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build Docker
+        run: docker build -t factuc-iaed .
